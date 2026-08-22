@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%235865f2'/%3E%3C/svg%3E">
+<title>pwr-viewgen</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; font-family: system-ui, sans-serif; background: #1e1f22; color: #dbdee1; display: flex; gap: 16px; padding: 16px; height: calc(100vh - 32px); box-sizing: border-box; }
+  .pane { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+  textarea { flex: 1; background: #2b2d31; color: #dbdee1; border: 1px solid #1a1b1e; border-radius: 6px; padding: 10px; font: 13px monospace; resize: none; }
+  iframe { flex: 1; border: none; background: #313338; border-radius: 6px; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  input[type="number"], input[type="text"] { background: #2b2d31; color: #dbdee1; border: 1px solid #1a1b1e; border-radius: 4px; padding: 4px 8px; width: 70px; }
+  input[type="text"] { width: auto; flex: 1; }
+  button { background: #5865f2; color: #fff; border: none; border-radius: 4px; padding: 6px 12px; cursor: pointer; }
+  button:hover { background: #4752c4; }
+  #status { min-height: 18px; font-size: 13px; }
+  .error { color: #f23f42; } .ok { color: #23a559; }
+</style>
+</head>
+<body>
+<div class="pane">
+  <div class="row">
+    <label>width <input id="width" type="number" value="600" min="200" max="1200"></label>
+    <label>scale <input id="scale" type="number" value="2" min="1" max="4"></label>
+    <button id="png">Download PNG</button>
+    <button id="copy">Copy HTML</button>
+  </div>
+  <textarea id="json" spellcheck="false" placeholder="{ &quot;content&quot;: &quot;hello&quot; }"></textarea>
+</div>
+<div class="pane">
+  <div class="row">
+    <input id="webhook" type="text" placeholder="https://discord.com/api/webhooks/...">
+    <button id="send">Send to webhook</button>
+  </div>
+  <div id="status"></div>
+  <iframe id="preview" title="preview" sandbox=""></iframe>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+const status = (text, cls) => { $('status').textContent = text; $('status').className = cls || ''; };
+let lastHtml = '';
+let timer = null;
+
+async function renderPreview() {
+  const body = { json: $('json').value, width: Number($('width').value) || 600 };
+  try {
+    const res = await fetch('/api/render', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) { status((await res.text()), 'error'); return; }
+    const data = await res.json();
+    lastHtml = data.html;
+    $('preview').srcdoc = data.html;
+    status('');
+  } catch (err) {
+    status('render failed: ' + err.message, 'error');
+  }
+}
+
+$('json').addEventListener('input', () => {
+  clearTimeout(timer);
+  timer = setTimeout(renderPreview, 300);
+});
+$('width').addEventListener('change', renderPreview);
+
+$('png').addEventListener('click', async () => {
+  status('capturing PNG...');
+  try {
+    const res = await fetch('/api/png', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ json: $('json').value, width: Number($('width').value) || 600, scale: Number($('scale').value) || 2 }),
+    });
+    if (!res.ok) { status(await res.text(), 'error'); return; }
+    const url = URL.createObjectURL(await res.blob());
+    const a = document.createElement('a');
+    a.href = url; a.download = 'embed.png'; a.click();
+    URL.revokeObjectURL(url);
+    status('');
+  } catch (err) {
+    status('PNG capture failed: ' + err.message, 'error');
+  }
+});
+
+$('copy').addEventListener('click', async () => {
+  if (!lastHtml) {
+    await renderPreview();
+    if (!lastHtml) return;
+  }
+  await navigator.clipboard.writeText(lastHtml);
+  status('HTML copied', 'ok');
+});
+
+$('send').addEventListener('click', async () => {
+  status('sending...');
+  try {
+    const res = await fetch('/api/send', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ json: $('json').value, url: $('webhook').value }),
+    });
+    if (!res.ok) { status(await res.text(), 'error'); return; }
+    const data = await res.json();
+    status(data.ok ? 'sent' : 'error: ' + data.error, data.ok ? 'ok' : 'error');
+  } catch (err) {
+    status('send failed: ' + err.message, 'error');
+  }
+});
+</script>
+</body>
+</html>

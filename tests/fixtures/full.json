@@ -1,0 +1,22 @@
+{
+    "content": "Deploy **finished**",
+    "username": "Notifier",
+    "avatar_url": "https://cdn.example.test/avatar.png",
+    "embeds": [{
+        "title": "Release notes",
+        "url": "https://example.test/rel/7",
+        "description": "All systems *nominal*.\nSee ||changelog|| and https://example.test/changelog",
+        "color": 3066993,
+        "timestamp": "2025-08-22T12:00:00.000Z",
+        "footer": { "text": "CI bot", "icon_url": "https://cdn.example.test/ci.png" },
+        "image": { "url": "https://cdn.example.test/chart.png" },
+        "thumbnail": { "url": "https://cdn.example.test/thumb.png" },
+        "author": { "name": "Ada", "url": "https://example.test/~ada", "icon_url": "https://cdn.example.test/ada.png" },
+        "fields": [
+            { "name": "Branch", "value": "main", "inline": true },
+            { "name": "Duration", "value": "3m 12s", "inline": true },
+            { "name": "Commit", "value": "abc1234", "inline": true },
+            { "name": "Notes", "value": "see <docs>" }
+        ]
+    }]
+}

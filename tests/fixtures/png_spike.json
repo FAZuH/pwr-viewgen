@@ -1,0 +1,28 @@
+{
+    "content": "Deploy **finished**",
+    "username": "Notifier",
+    "avatar_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
+    "components": [
+        { "type": 1, "components": [
+            { "type": 2, "style": 1, "label": "Primary" },
+            { "type": 2, "style": 5, "label": "Docs", "url": "https://example.test/docs" }
+        ]}
+    ],
+    "embeds": [{
+        "title": "Release notes",
+        "url": "https://example.test/rel/7",
+        "description": "All systems *nominal*.\nSee ||changelog|| and https://example.test/changelog",
+        "color": 3066993,
+        "timestamp": "2025-08-22T12:00:00.000Z",
+        "footer": { "text": "CI bot", "icon_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" },
+        "image": { "url": "https://cdn.example.test/chart-wide.png" },
+        "thumbnail": { "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" },
+        "author": { "name": "Ada", "url": "https://example.test/~ada", "icon_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" },
+        "fields": [
+            { "name": "Branch", "value": "main", "inline": true },
+            { "name": "Duration", "value": "3m 12s", "inline": true },
+            { "name": "Commit", "value": "abc1234", "inline": true },
+            { "name": "Notes", "value": "see <docs>" }
+        ]
+    }]
+}
