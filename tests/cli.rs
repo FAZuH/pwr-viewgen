@@ -2,7 +2,7 @@ use std::io::Write;
 use std::process::Command;
 use std::process::Stdio;
 
-use pwr_viewgen::model::Message;
+use pwr_viewgen::model::parse_message;
 use pwr_viewgen::render::render_html_with_width;
 
 const NOW: &str = "1755878400";
@@ -36,7 +36,7 @@ fn render_fixture_matches_library_golden() {
 
     let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
     let json = std::fs::read_to_string("tests/fixtures/full.json").unwrap();
-    let message: Message = serde_json::from_str(&json).unwrap();
+    let message = parse_message(&json).unwrap();
     assert_eq!(
         stdout,
         render_html_with_width(&message, NOW_UNIX, DEFAULT_WIDTH)

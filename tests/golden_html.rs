@@ -1,4 +1,4 @@
-use pwr_viewgen::model::Message;
+use pwr_viewgen::model::parse_message;
 use pwr_viewgen::render::render_html;
 use pwr_viewgen::render::render_message_html;
 
@@ -40,7 +40,7 @@ const COMPONENTS_V1_JSON: &str = r#"{
             { "type": 2, "style": 5, "label": "Docs", "url": "https://example.test/docs" }
         ]},
         { "type": 1, "components": [
-            { "type": 3, "placeholder": "Choose…", "options": [ { "label": "Red" }, { "label": "Blue" } ] }
+            { "type": 3, "custom_id": "color_pick", "placeholder": "Choose…", "options": [ { "label": "Red", "value": "red" }, { "label": "Blue", "value": "blue" } ] }
         ]}
     ]
 }"#;
@@ -81,7 +81,7 @@ const COMPONENTS_V2_JSON: &str = r##"{
 
 #[test]
 fn golden_simple() {
-    let msg: Message = serde_json::from_str(SIMPLE_JSON).unwrap();
+    let msg = parse_message(SIMPLE_JSON).unwrap();
     assert_eq!(
         render_message_html(&msg, NOW),
         concat!(
@@ -96,7 +96,7 @@ fn golden_simple() {
 
 #[test]
 fn golden_full_embed() {
-    let msg: Message = serde_json::from_str(FULL_JSON).unwrap();
+    let msg = parse_message(FULL_JSON).unwrap();
     assert_eq!(
         render_message_html(&msg, NOW),
         concat!(
@@ -145,7 +145,7 @@ fn golden_full_embed() {
 
 #[test]
 fn golden_components_v1_buttons_and_select() {
-    let msg: Message = serde_json::from_str(COMPONENTS_V1_JSON).unwrap();
+    let msg = parse_message(COMPONENTS_V1_JSON).unwrap();
     assert_eq!(
         render_message_html(&msg, NOW),
         concat!(
@@ -172,7 +172,7 @@ fn golden_components_v1_buttons_and_select() {
 
 #[test]
 fn golden_components_v2_renders_all_container_children() {
-    let msg: Message = serde_json::from_str(COMPONENTS_V2_JSON).unwrap();
+    let msg = parse_message(COMPONENTS_V2_JSON).unwrap();
     assert_eq!(
         render_message_html(&msg, NOW),
         concat!(
@@ -222,7 +222,7 @@ fn v2_flag_suppresses_content_and_embed_chrome_even_when_present() {
         "embeds": [{ "title": "vanish too" }],
         "components": [ { "type": 10, "content": "kept" } ]
     }"#;
-    let msg: Message = serde_json::from_str(raw).unwrap();
+    let msg = parse_message(raw).unwrap();
     let html = render_message_html(&msg, NOW);
     assert_eq!(
         html,
@@ -240,9 +240,91 @@ fn v2_flag_suppresses_content_and_embed_chrome_even_when_present() {
 
 #[test]
 fn full_document_has_doctype_and_stylesheet_once() {
-    let msg: Message = serde_json::from_str(SIMPLE_JSON).unwrap();
+    let msg = parse_message(SIMPLE_JSON).unwrap();
     let html = render_html(&msg, NOW);
     assert!(html.starts_with("<!DOCTYPE html>"));
     assert_eq!(html.matches("<style>").count(), 1);
     assert!(html.contains("</body></html>"));
+}
+
+const SELECT_KINDS_JSON: &str = r#"{
+    "components": [
+        { "type": 1, "components": [ { "type": 5, "custom_id": "u", "placeholder": "Pick a user…" } ] },
+        { "type": 1, "components": [ { "type": 6, "custom_id": "r", "placeholder": "Pick a role…" } ] },
+        { "type": 1, "components": [ { "type": 7, "custom_id": "m", "placeholder": "Pick anyone…" } ] },
+        { "type": 1, "components": [ { "type": 8, "custom_id": "c", "channel_types": [0], "placeholder": "Pick a channel…" } ] }
+    ]
+}"#;
+
+#[test]
+fn golden_select_kinds_user_role_mentionable_channel_render_closed_pills() {
+    let msg = parse_message(SELECT_KINDS_JSON).unwrap();
+    let html = render_message_html(&msg, NOW);
+    assert_eq!(
+        html.matches(r#"<div class="eg-select"><span>"#).count(),
+        4,
+        "every typed select kind renders one closed pill: {html}"
+    );
+    assert!(html.contains("<span>Pick a user…</span>"));
+    assert!(html.contains("<span>Pick a role…</span>"));
+    assert!(html.contains("<span>Pick anyone…</span>"));
+    assert!(html.contains("<span>Pick a channel…</span>"));
+}
+
+#[test]
+fn golden_premium_button_renders_like_link_button_without_url() {
+    let raw = r#"{
+        "components": [
+            { "type": 1, "components": [
+                { "type": 2, "style": 6, "sku_id": "123456789012345678", "disabled": false }
+            ]}
+        ]
+    }"#;
+    let msg = parse_message(raw).unwrap();
+    assert_eq!(
+        render_message_html(&msg, NOW),
+        concat!(
+            r#"<div id="wrap">"#,
+            r#"<div class="eg-body">"#,
+            r#"<div class="eg-components">"#,
+            r#"<div class="eg-action-row">"#,
+            r#"<button type="button" class="eg-btn eg-btn-link"></button>"#,
+            r#"</div>"#,
+            r#"</div>"#,
+            r#"</div>"#,
+            r#"</div>"#
+        )
+    );
+}
+
+#[test]
+fn golden_gallery_item_descriptions_render_as_image_alt_text() {
+    let raw = r#"{
+        "flags": 32768,
+        "components": [
+            {
+                "type": 12,
+                "items": [
+                    { "media": { "url": "https://cdn.example.test/a.png" }, "description": "sunset photo" },
+                    { "media": { "url": "https://cdn.example.test/b.png" } }
+                ]
+            }
+        ]
+    }"#;
+    let msg = parse_message(raw).unwrap();
+    assert_eq!(
+        render_message_html(&msg, NOW),
+        concat!(
+            r#"<div id="wrap">"#,
+            r#"<div class="eg-body">"#,
+            r#"<div class="eg-components">"#,
+            r#"<div class="eg-gallery" style="grid-template-columns:repeat(2,1fr)">"#,
+            r#"<figure class="eg-media"><img class="eg-gallery-item" src="https://cdn.example.test/a.png" alt="sunset photo"></figure>"#,
+            r#"<figure class="eg-media"><img class="eg-gallery-item" src="https://cdn.example.test/b.png" alt=""></figure>"#,
+            r#"</div>"#,
+            r#"</div>"#,
+            r#"</div>"#,
+            r#"</div>"#
+        )
+    );
 }
