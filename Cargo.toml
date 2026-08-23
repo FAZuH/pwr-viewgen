@@ -24,3 +24,6 @@ axum = { version = "0.8", optional = true, default-features = false, features = 
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
+
+[workspace]
+members = ["crates/pwr-ext"]
