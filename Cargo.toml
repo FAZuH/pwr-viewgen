@@ -25,6 +25,7 @@ axum = { version = "0.8", optional = true, default-features = false, features = 
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
+serenity = { git = "https://github.com/serenity-rs/serenity", branch = "next", default-features = false, features = ["builder"] }
 
 [workspace]
 members = ["crates/pwr-ext"]

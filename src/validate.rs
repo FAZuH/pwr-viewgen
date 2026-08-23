@@ -3,19 +3,19 @@ use crate::model::Embed;
 use crate::model::Footer;
 use crate::model::Message;
 
-const MAX_CONTENT_CHARS: usize = 2000;
-const MAX_EMBEDS: usize = 10;
-const MAX_TITLE_CHARS: usize = 256;
-const MAX_DESCRIPTION_CHARS: usize = 4096;
-const MAX_FIELDS: usize = 25;
-const MAX_FIELD_NAME_CHARS: usize = 256;
-const MAX_FIELD_VALUE_CHARS: usize = 1024;
-const MAX_FOOTER_TEXT_CHARS: usize = 2048;
-const MAX_AUTHOR_NAME_CHARS: usize = 256;
-const MIN_COLOR: i64 = 0;
-const MAX_COLOR: i64 = 0xFF_FFFF;
+pub const MAX_CONTENT_CHARS: usize = 2000;
+pub const MAX_EMBEDS: usize = 10;
+pub const MAX_TITLE_CHARS: usize = 256;
+pub const MAX_DESCRIPTION_CHARS: usize = 4096;
+pub const MAX_FIELDS: usize = 25;
+pub const MAX_FIELD_NAME_CHARS: usize = 256;
+pub const MAX_FIELD_VALUE_CHARS: usize = 1024;
+pub const MAX_FOOTER_TEXT_CHARS: usize = 2048;
+pub const MAX_AUTHOR_NAME_CHARS: usize = 256;
+pub const MIN_COLOR: i64 = 0;
+pub const MAX_COLOR: i64 = 0xFF_FFFF;
 const IS_COMPONENTS_V2: i64 = 1 << 15;
-const MAX_ACTION_ROW_CHILDREN: usize = 5;
+pub const MAX_ACTION_ROW_CHILDREN: usize = 5;
 const BUTTON_STYLE_RANGE: std::ops::RangeInclusive<u8> = 1..=5;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
