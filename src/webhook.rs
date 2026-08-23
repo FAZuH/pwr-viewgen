@@ -60,12 +60,11 @@ pub fn build_request(
 pub fn prepare(
     webhook_url: &str,
     message: &Message,
+    canonical_body: &str,
     wait: bool,
 ) -> Result<WebhookRequest, SendError> {
     validate(message)?;
-    let body =
-        serde_json::to_string(message).expect("Message contains only JSON-serializable data");
-    build_request(webhook_url, &body, wait)
+    build_request(webhook_url, canonical_body, wait)
 }
 
 pub fn extract_message_id(response_body: &str) -> Option<String> {
@@ -84,8 +83,13 @@ pub fn retry_after_seconds(rate_limit_body: &str) -> f64 {
         .unwrap_or(DEFAULT_RETRY_AFTER_SECS)
 }
 
-pub fn send(webhook_url: &str, message: &Message, wait: bool) -> Result<SendResult, SendError> {
-    let request = prepare(webhook_url, message, wait)?;
+pub fn send(
+    webhook_url: &str,
+    message: &Message,
+    canonical_body: &str,
+    wait: bool,
+) -> Result<SendResult, SendError> {
+    let request = prepare(webhook_url, message, canonical_body, wait)?;
     let agent = ureq::AgentBuilder::new().timeout(REQUEST_TIMEOUT).build();
     execute(&agent, &request)
 }
@@ -197,25 +201,81 @@ mod tests {
     }
 
     #[test]
-    fn prepare_rejects_invalid_payload_before_building_request() {
-        let mut message = plain_message();
-        message.content = "x".repeat(2001);
-        assert!(matches!(
-            prepare("https://discord.com/api/webhooks/1/abc", &message, false),
-            Err(SendError::Validation(_))
-        ));
-    }
-
-    #[test]
-    fn prepare_serializes_valid_message_into_body() {
+    fn prepare_forwards_canonical_body_verbatim_after_validation() {
+        let message = plain_message();
+        let canonical = r#"{"content":"hello","custom_id":"kept"}"#;
         let req = prepare(
             "https://discord.com/api/webhooks/1/abc",
-            &plain_message(),
+            &message,
+            canonical,
             false,
         )
         .unwrap();
-        let round_tripped: Message = serde_json::from_str(&req.body).expect("body parses");
-        assert_eq!(round_tripped, plain_message());
+        assert_eq!(req.body, canonical);
+    }
+
+    #[test]
+    fn forwarded_body_keeps_button_custom_id_select_kind_and_option_value() {
+        let raw = r#"{
+            "content": "pick one",
+            "components": [
+                { "type": 1, "components": [
+                    { "type": 2, "style": 1, "label": "Ping", "custom_id": "do_thing" }
+                ]},
+                { "type": 1, "components": [
+                    { "type": 5, "custom_id": "user_pick", "placeholder": "who?" }
+                ]},
+                { "type": 1, "components": [
+                    { "type": 3, "custom_id": "color", "options": [
+                        { "label": "Red", "value": "red" }
+                    ]}
+                ]}
+            ]
+        }"#;
+        let parsed = raw.parse::<crate::model::ParsedMessage>().expect("payload parses");
+        let req = prepare(
+            "https://discord.com/api/webhooks/1/abc",
+            &parsed.message,
+            &parsed.canonical.to_string(),
+            false,
+        )
+        .unwrap();
+
+        assert!(
+            req.body.contains(r#""custom_id":"do_thing""#),
+            "button custom_id must survive, got: {}",
+            req.body
+        );
+        assert!(
+            req.body.contains(r#""type":5"#),
+            "user-select kind must keep its numeric type, got: {}",
+            req.body
+        );
+        assert!(
+            req.body.contains(r#""custom_id":"user_pick""#),
+            "select custom_id must survive, got: {}",
+            req.body
+        );
+        assert!(
+            req.body.contains(r#""value":"red""#),
+            "option value must survive, got: {}",
+            req.body
+        );
+    }
+
+    #[test]
+    fn oversized_content_still_fails_before_request_is_built() {
+        let mut message = plain_message();
+        message.content = "x".repeat(2001);
+        assert!(matches!(
+            prepare(
+                "https://discord.com/api/webhooks/1/abc",
+                &message,
+                "{}",
+                false
+            ),
+            Err(SendError::Validation(_))
+        ));
     }
 
     #[test]

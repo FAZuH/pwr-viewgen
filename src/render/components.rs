@@ -324,8 +324,8 @@ mod tests {
     }
 
     #[test]
-    fn select_menu_closed_shows_placeholder_then_first_option() {
-        let menu = |placeholder: Option<&str>| Component::SelectMenu {
+    fn select_menu_closed_shows_placeholder_then_first_option() {        let menu = |placeholder: Option<&str>| Component::SelectMenu {
+            kind: 3,
             placeholder: placeholder.map(str::to_owned),
             disabled: false,
             options: vec![SelectOption {
@@ -339,6 +339,33 @@ mod tests {
             "<div class=\"eg-select\"><span>Pick one…</span><span class=\"eg-select-chevron\"></span></div>"
         );
         assert!(render(&menu(None)).contains("<span>First</span>"));
+    }
+
+    #[test]
+    fn typed_select_and_empty_select_degrade_to_closed_pills() {
+        let empty = Component::SelectMenu {
+            kind: 3,
+            placeholder: None,
+            disabled: false,
+            options: vec![],
+        };
+        assert_eq!(
+            render(&empty),
+            "<div class=\"eg-select\"><span></span><span class=\"eg-select-chevron\"></span></div>",
+            "no options and no placeholder renders an empty closed pill"
+        );
+
+        let user_select = Component::SelectMenu {
+            kind: 5,
+            placeholder: None,
+            disabled: true,
+            options: vec![],
+        };
+        assert_eq!(
+            render(&user_select),
+            "<div class=\"eg-select\"><span></span><span class=\"eg-select-chevron\"></span></div>",
+            "typed selects render like string selects; disabled state has no pill chrome yet"
+        );
     }
 
     #[test]

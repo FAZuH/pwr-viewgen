@@ -143,3 +143,12 @@ impl From<CreateMessageDe> for CreateMessage<'static> {
         message.enforce_nonce(de.enforce_nonce)
     }
 }
+
+impl CreateMessageDe {
+    /// Converts into a builder and serializes it back to the canonical JSON
+    /// serenity itself would emit, so downstream consumers can hand off
+    /// normalized payloads without depending on serenity.
+    pub fn into_canonical_value(self) -> Result<Value, serde_json::Error> {
+        serde_json::to_value(CreateMessage::from(self))
+    }
+}

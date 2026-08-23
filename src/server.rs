@@ -4,7 +4,7 @@ use axum::response::IntoResponse;
 use axum::response::Response;
 use axum::Json;
 
-use crate::model::Message;
+use crate::model::ParsedMessage;
 use crate::render::{self};
 use crate::validate::validate;
 
@@ -69,22 +69,22 @@ struct SendRequest {
 async fn api_render(
     Json(request): Json<RenderRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let message = parse_message(&request.json)?;
+    let parsed = parse_message(&request.json)?;
     let now_unix = chrono::Utc::now().timestamp();
     let width = request.width.unwrap_or(render::DEFAULT_CONTENT_WIDTH);
     Ok(Json(serde_json::json!({
-        "html": render::render_html_with_width(&message, now_unix, width),
+        "html": render::render_html_with_width(&parsed.message, now_unix, width),
     })))
 }
 
 async fn api_png(Json(request): Json<PngRequest>) -> Result<Response, ApiError> {
     #[cfg(feature = "png")]
     {
-        let message = parse_message(&request.json)?;
+        let parsed = parse_message(&request.json)?;
         let now_unix = chrono::Utc::now().timestamp();
         let width = request.width.unwrap_or(render::DEFAULT_CONTENT_WIDTH);
         let scale = request.scale.unwrap_or(DEFAULT_SCALE);
-        let document = render::render_html_with_width(&message, now_unix, width);
+        let document = render::render_html_with_width(&parsed.message, now_unix, width);
         let captured = tokio::task::spawn_blocking(move || {
             crate::shot::capture_html(&document, width, scale as f32)
         })
@@ -103,9 +103,11 @@ async fn api_png(Json(request): Json<PngRequest>) -> Result<Response, ApiError> 
 }
 
 async fn api_send(Json(request): Json<SendRequest>) -> Result<Json<serde_json::Value>, ApiError> {
-    let message = parse_message(&request.json)?;
+    let parsed = parse_message(&request.json)?;
     let url = request.url;
-    let result = tokio::task::spawn_blocking(move || crate::webhook::send(&url, &message, false))
+    let result = tokio::task::spawn_blocking(move || {
+        crate::webhook::send(&url, &parsed.message, &parsed.canonical.to_string(), false)
+    })
         .await
         .map_err(|error| internal(format!("send task failed: {error}")))?;
     Ok(Json(match result {
@@ -114,15 +116,15 @@ async fn api_send(Json(request): Json<SendRequest>) -> Result<Json<serde_json::V
     }))
 }
 
-fn parse_message(value: &serde_json::Value) -> Result<Message, ApiError> {
-    let message: Message = match value {
-        serde_json::Value::String(raw) => serde_json::from_str(raw),
-        _ => serde_json::from_value(value.clone()),
+fn parse_message(value: &serde_json::Value) -> Result<crate::model::ParsedMessage, ApiError> {
+    let parsed = match value {
+        serde_json::Value::String(raw) => raw.parse::<crate::model::ParsedMessage>(),
+        _ => crate::model::ParsedMessage::from_value(value),
     }
     .map_err(|error| bad_request(format!("invalid message JSON: {error}")))?;
-    validate(&message)
+    validate(&parsed.message)
         .map_err(|error| bad_request(format!("message failed validation: {error}")))?;
-    Ok(message)
+    Ok(parsed)
 }
 
 fn bad_request(message: String) -> ApiError {

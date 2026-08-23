@@ -1,6 +1,118 @@
 use serde::Deserialize;
 use serde::Serialize;
 
+use pwr_ext::prelude::CreateMessageDe;
+
+/// A message-parsing failure, either from malformed JSON or from payload
+/// shapes upstream serenity builders cannot represent (spec D2).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParseError(String);
+
+impl std::fmt::Display for ParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for ParseError {}
+
+/// Parses webhook-execution JSON into the render-side [`Message`] view.
+///
+/// Pipeline per spec D1: `str -> Value -> pwr-ext wrappers (strict,
+/// upstream-canonical) -> serde_json::to_value -> Message::from_value`.
+/// Unknown component types, invalid select-menu kinds, and other
+/// non-builder-shaped payloads error here before any rendering happens.
+pub fn parse_message(json: &str) -> Result<Message, ParseError> {
+    json.parse::<ParsedMessage>().map(|parsed| parsed.message)
+}
+
+/// A parsed message together with the canonical payload the view was loaded
+/// from.
+///
+/// The webhook send path forwards `canonical` verbatim (spec D3), so
+/// non-rendered wire fields — button `custom_id`, select-menu kinds, option
+/// values, `min_values`/`max_values` — survive the trip even though the
+/// render-side [`Message`] view drops them.
+#[derive(Debug, Clone)]
+pub struct ParsedMessage {
+    pub message: Message,
+    pub canonical: serde_json::Value,
+}
+
+impl std::str::FromStr for ParsedMessage {
+    type Err = ParseError;
+
+    fn from_str(json: &str) -> Result<Self, ParseError> {
+        let raw: serde_json::Value =
+            serde_json::from_str(json).map_err(|error| ParseError(error.to_string()))?;
+        message_from_value(raw)
+    }
+}
+
+impl ParsedMessage {
+    pub fn from_value(raw: &serde_json::Value) -> Result<Self, ParseError> {
+        message_from_value(raw.clone())
+    }
+}
+
+fn message_from_value(mut raw: serde_json::Value) -> Result<ParsedMessage, ParseError> {
+    let object = raw
+        .as_object_mut()
+        .ok_or_else(|| ParseError("expected a JSON object".to_owned()))?;
+
+    // Webhook-execution identity fields live beside the message body; serenity's
+    // `CreateMessage` does not carry them, so keep them out of strict parsing
+    // and splice them back after canonicalization.
+    let username = object.remove("username");
+    let avatar_url = object.remove("avatar_url");
+
+    // Required by the upstream builder shape but optional in Discord's
+    // webhook API; absent means false.
+    object
+        .entry("tts".to_owned())
+        .or_insert(serde_json::Value::Bool(false));
+    object
+        .entry("enforce_nonce".to_owned())
+        .or_insert(serde_json::Value::Bool(false));
+    if let Some(embeds) = object.get_mut("embeds").and_then(serde_json::Value::as_array_mut) {
+        for embed in embeds {
+            let Some(fields) = embed.get_mut("fields").and_then(serde_json::Value::as_array_mut)
+            else {
+                continue;
+            };
+            for field in fields {
+                if let Some(field) = field.as_object_mut() {
+                    field
+                        .entry("inline".to_owned())
+                        .or_insert(serde_json::Value::Bool(false));
+                }
+            }
+        }
+    }
+
+    let wrapper: CreateMessageDe = serde_json::from_value(raw)
+        .map_err(|error| ParseError(format!("parse: {error}")))?;
+    let mut canonical = wrapper
+        .into_canonical_value()
+        .map_err(|error| ParseError(format!("parse: {error}")))?;
+
+    if let Some(canonical) = canonical.as_object_mut() {
+        if let Some(username) = username {
+            canonical.insert("username".to_owned(), username);
+        }
+        if let Some(avatar_url) = avatar_url {
+            canonical.insert("avatar_url".to_owned(), avatar_url);
+        }
+    }
+
+    let message: Message =
+        serde_json::from_value(canonical.clone()).map_err(|error| ParseError(error.to_string()))?;
+    Ok(ParsedMessage {
+        message,
+        canonical,
+    })
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Message {
     #[serde(default)]
@@ -108,6 +220,11 @@ pub struct MediaGalleryItem {
 /// 3 select menu, 9 section, 10 text display, 11 thumbnail, 12 media gallery,
 /// 13 file, 14 separator, 17 container), so deserialization peeks at `type`
 /// via an intermediate JSON value.
+///
+/// View-side loader seam: `message_from_value` reads the pwr-ext-canonical
+/// payload into this tree. Discord-shape *validation* happens upstream in
+/// pwr-ext; this dispatch assumes well-formed tags and keeps the unknown-type
+/// arm only as an exhaustive-match safeguard.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Component {
     ActionRow {
@@ -121,6 +238,7 @@ pub enum Component {
         disabled: bool,
     },
     SelectMenu {
+        kind: u8,
         placeholder: Option<String>,
         disabled: bool,
         options: Vec<SelectOption>,
@@ -194,11 +312,12 @@ impl Serialize for Component {
                 }),
             ),
             Component::SelectMenu {
+                kind,
                 placeholder,
                 disabled,
                 options,
             } => (
-                3,
+                *kind,
                 serde_json::to_value(SelectMenuBody {
                     placeholder: placeholder.clone(),
                     disabled: *disabled,
@@ -291,7 +410,8 @@ impl Component {
                 url: b.url,
                 disabled: b.disabled,
             }),
-            3 => parse_body::<SelectMenuBody>(value).map(|b| Component::SelectMenu {
+            3 | 5 | 6 | 7 | 8 => parse_body::<SelectMenuBody>(value).map(|b| Component::SelectMenu {
+                kind: ty as u8,
                 placeholder: b.placeholder,
                 disabled: b.disabled,
                 options: b.options,
@@ -356,6 +476,7 @@ struct SelectMenuBody {
     placeholder: Option<String>,
     #[serde(default)]
     disabled: bool,
+    #[serde(default)]
     options: Vec<SelectOption>,
 }
 
@@ -416,8 +537,7 @@ mod tests {
 
     #[test]
     fn bare_content_object_parses_with_defaults() {
-        let msg: Message =
-            serde_json::from_str(r#"{"content": "hello world"}"#).expect("bare payload parses");
+        let msg = parse_message(r#"{"content": "hello world"}"#).expect("bare payload parses");
         assert_eq!(msg.content, "hello world");
         assert_eq!(msg.username, None);
         assert_eq!(msg.avatar_url, None);
@@ -456,7 +576,7 @@ mod tests {
                 }
             ]
         }"#;
-        let msg: Message = serde_json::from_str(raw).expect("full payload parses");
+        let msg = parse_message(raw).expect("full payload parses");
 
         assert_eq!(msg.username.as_deref(), Some("Notifier"));
         assert!(msg.tts);
@@ -467,7 +587,8 @@ mod tests {
         assert_eq!(embed.title.as_deref(), Some("Deploy finished"));
         assert_eq!(embed.description.as_deref(), Some("All systems nominal"));
         assert_eq!(embed.url.as_deref(), Some("https://example.test/deploys/7"));
-        assert_eq!(embed.timestamp.as_deref(), Some("2026-08-22T12:00:00.000Z"));
+        // canonicalized through the builder (".000" milliseconds dropped); renders identically
+        assert_eq!(embed.timestamp.as_deref(), Some("2026-08-22T12:00:00Z"));
         assert_eq!(embed.color, Some(3066993));
         assert_eq!(
             embed.footer.as_ref().map(|f| f.text.as_str()),
@@ -524,16 +645,22 @@ mod tests {
                     ]
                 },
                 {
-                    "type": 3,
-                    "placeholder": "Choose a color…",
-                    "options": [
-                        { "label": "Red", "description": "The loud one", "emoji": { "name": "🔴" } },
-                        { "label": "Blue" }
+                    "type": 1,
+                    "components": [
+                        {
+                            "type": 3,
+                            "custom_id": "color_pick",
+                            "placeholder": "Choose a color…",
+                            "options": [
+                                { "label": "Red", "value": "red", "description": "The loud one", "emoji": { "name": "🔴" } },
+                                { "label": "Blue", "value": "blue" }
+                            ]
+                        }
                     ]
                 }
             ]
         }"#;
-        let msg: Message = serde_json::from_str(raw).expect("v1 components parse");
+        let msg = parse_message(raw).expect("v1 components parse");
 
         let [row, menu] = msg.components.as_slice() else {
             panic!("expected action row + select menu");
@@ -569,13 +696,19 @@ mod tests {
         assert_eq!(*style, 1);
         assert!(*disabled);
 
-        let Component::SelectMenu {
+        let Component::ActionRow {
+            components: menu_row,
+        } = menu
+        else {
+            panic!("second component should be a select-menu action row");
+        };
+        let [Component::SelectMenu {
             placeholder,
             options,
             ..
-        } = menu
+        }] = menu_row.as_slice()
         else {
-            panic!("second component should be a select menu");
+            panic!("row should hold one select menu");
         };
         assert_eq!(placeholder.as_deref(), Some("Choose a color…"));
         assert_eq!(options.len(), 2);
@@ -631,7 +764,7 @@ mod tests {
                 }
             ]
         }"##;
-        let msg: Message = serde_json::from_str(raw).expect("v2 components parse");
+        let msg = parse_message(raw).expect("v2 components parse");
 
         assert_eq!(msg.flags, Some(1 << 15));
         assert_eq!(
@@ -693,7 +826,7 @@ mod tests {
     #[test]
     fn unknown_component_type_is_rejected() {
         let raw = r#"{"content":"x","components":[{"type":42,"content":"nope"}]}"#;
-        let err = serde_json::from_str::<Message>(raw).expect_err("unknown type must fail");
+        let err = parse_message(raw).expect_err("unknown type must fail");
         assert!(
             err.to_string().contains("component type"),
             "error should mention component type, got: {err}"
@@ -703,7 +836,7 @@ mod tests {
     #[test]
     fn component_missing_type_field_is_rejected() {
         let raw = r#"{"content":"x","components":[{"content":"no type here"}]}"#;
-        let err = serde_json::from_str::<Message>(raw).expect_err("missing type must fail");
+        let err = parse_message(raw).expect_err("missing type must fail");
         assert!(
             err.to_string().contains("\"type\""),
             "error should mention the missing type field, got: {err}"

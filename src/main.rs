@@ -4,7 +4,7 @@ use std::process::ExitCode;
 
 use clap::Parser;
 use clap::Subcommand;
-use pwr_viewgen::model::Message;
+use pwr_viewgen::model::parse_message;
 use pwr_viewgen::render::{self};
 #[cfg(feature = "png")]
 use pwr_viewgen::shot;
@@ -119,8 +119,7 @@ fn run() -> Result<(), String> {
             now,
         } => {
             let json = read_input(&input)?;
-            let message: Message =
-                serde_json::from_str(&json).map_err(|e| format!("invalid message JSON: {e}"))?;
+            let message = parse_message(&json).map_err(|e| format!("invalid message JSON: {e}"))?;
             validate(&message).map_err(|e| format!("message failed validation: {e}"))?;
             let now_unix = now.unwrap_or_else(|| chrono::Utc::now().timestamp());
             let document = render::render_html_with_width(&message, now_unix, width);
@@ -132,9 +131,10 @@ fn run() -> Result<(), String> {
             wait,
         } => {
             let json = read_input(&input)?;
-            let message: Message =
-                serde_json::from_str(&json).map_err(|e| format!("invalid message JSON: {e}"))?;
-            match webhook::send(&url, &message, wait) {
+            let parsed = json
+                .parse::<pwr_viewgen::model::ParsedMessage>()
+                .map_err(|e| format!("invalid message JSON: {e}"))?;
+            match webhook::send(&url, &parsed.message, &parsed.canonical.to_string(), wait) {
                 Ok(result) => {
                     if let Some(id) = result.message_id {
                         println!("{id}");

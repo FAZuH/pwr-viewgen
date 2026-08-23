@@ -59,6 +59,12 @@ pwr-viewgen send -i msg.json --webhook "https://discord.com/api/webhooks/ID/TOKE
 Add `--wait` to append `?wait=true`; the created message id is printed on
 success.
 
+The payload is parsed through the same strict pipeline as `render` (see
+"Accepted inputs" below) before sending: what leaves the machine is the
+canonicalized, normalized JSON — not your raw input bytes. Interactive
+fields survive the trip: button `custom_id`, select-menu kinds (types 5–8),
+and string-select option values are forwarded exactly as canonicalized.
+
 Live send is a manual step — no test talks to the network; CI runs only
 offline unit/integration tests. To verify against Discord by hand, create a
 webhook in a server channel (Channel settings → Integrations → Webhooks) and
@@ -68,3 +74,15 @@ Errors: oversized/invalid payloads are rejected before any request
 (`message failed validation: …`). Non-2xx responses print Discord's error
 JSON and exit non-zero. A single 429 rate-limit response is retried once,
 honoring `retry_after`.
+
+### Accepted inputs
+
+Input JSON is parsed through the `pwr-ext` wrappers (mirrors of the
+serenity-next builders), so payloads must match what serenity builders emit:
+unknown component types, select menus outside action rows, and string-select
+options without a `value` are rejected at parse time. Within that shape, more
+is accepted than before: components v2 trees, select-menu kinds
+user/role/mentionable/channel (types 5–8, rendered as closed pills), and
+premium buttons (style 6, rendered like link buttons without a URL).
+Canonicalization is lossless for rendering; webhook identity fields
+(`username`, `avatar_url`) are preserved.
