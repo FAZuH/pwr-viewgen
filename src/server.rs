@@ -4,7 +4,6 @@ use axum::response::IntoResponse;
 use axum::response::Response;
 use axum::Json;
 
-use crate::model::ParsedMessage;
 use crate::render::{self};
 use crate::validate::validate;
 
@@ -108,8 +107,8 @@ async fn api_send(Json(request): Json<SendRequest>) -> Result<Json<serde_json::V
     let result = tokio::task::spawn_blocking(move || {
         crate::webhook::send(&url, &parsed.message, &parsed.canonical.to_string(), false)
     })
-        .await
-        .map_err(|error| internal(format!("send task failed: {error}")))?;
+    .await
+    .map_err(|error| internal(format!("send task failed: {error}")))?;
     Ok(Json(match result {
         Ok(_) => serde_json::json!({ "ok": true }),
         Err(error) => serde_json::json!({ "ok": false, "error": error.to_string() }),

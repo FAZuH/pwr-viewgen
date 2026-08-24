@@ -1,6 +1,6 @@
+use pwr_viewgen::model::parse_message;
 use pwr_viewgen::model::Component;
 use pwr_viewgen::model::Message;
-use pwr_viewgen::model::parse_message;
 use pwr_viewgen::validate::validate;
 use pwr_viewgen::validate::ValidationError;
 use pwr_viewgen::validate::MAX_COMBINED_TEXT_CHARS;
@@ -299,7 +299,11 @@ fn components_v2_flag_bit_survives_parse_pipeline() {
 fn flag_bits_undefined_upstream_are_truncated_at_parse_time() {
     let raw = r#"{"flags": 32772, "content": "x"}"#;
     let msg: Message = parse_message(raw).expect("parses");
-    assert_eq!(msg.flags, Some(32772), "defined bits (suppress embeds) stay");
+    assert_eq!(
+        msg.flags,
+        Some(32772),
+        "defined bits (suppress embeds) stay"
+    );
 
     let raw_unknown = format!(r#"{{"flags": {}, "content": "x"}}"#, 1 << 20 | 32768);
     let msg: Message = parse_message(&raw_unknown).expect("parses");

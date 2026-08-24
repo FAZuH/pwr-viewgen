@@ -232,7 +232,9 @@ mod tests {
                 ]}
             ]
         }"#;
-        let parsed = raw.parse::<crate::model::ParsedMessage>().expect("payload parses");
+        let parsed = raw
+            .parse::<crate::model::ParsedMessage>()
+            .expect("payload parses");
         let req = prepare(
             "https://discord.com/api/webhooks/1/abc",
             &parsed.message,

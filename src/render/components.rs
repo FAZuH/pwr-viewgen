@@ -324,7 +324,8 @@ mod tests {
     }
 
     #[test]
-    fn select_menu_closed_shows_placeholder_then_first_option() {        let menu = |placeholder: Option<&str>| Component::SelectMenu {
+    fn select_menu_closed_shows_placeholder_then_first_option() {
+        let menu = |placeholder: Option<&str>| Component::SelectMenu {
             kind: 3,
             placeholder: placeholder.map(str::to_owned),
             disabled: false,

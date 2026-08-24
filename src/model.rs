@@ -1,7 +1,6 @@
+use pwr_ext::prelude::CreateMessageDe;
 use serde::Deserialize;
 use serde::Serialize;
-
-use pwr_ext::prelude::CreateMessageDe;
 
 /// A message-parsing failure, either from malformed JSON or from payload
 /// shapes upstream serenity builders cannot represent (spec D2).
@@ -74,9 +73,14 @@ fn message_from_value(mut raw: serde_json::Value) -> Result<ParsedMessage, Parse
     object
         .entry("enforce_nonce".to_owned())
         .or_insert(serde_json::Value::Bool(false));
-    if let Some(embeds) = object.get_mut("embeds").and_then(serde_json::Value::as_array_mut) {
+    if let Some(embeds) = object
+        .get_mut("embeds")
+        .and_then(serde_json::Value::as_array_mut)
+    {
         for embed in embeds {
-            let Some(fields) = embed.get_mut("fields").and_then(serde_json::Value::as_array_mut)
+            let Some(fields) = embed
+                .get_mut("fields")
+                .and_then(serde_json::Value::as_array_mut)
             else {
                 continue;
             };
@@ -90,8 +94,8 @@ fn message_from_value(mut raw: serde_json::Value) -> Result<ParsedMessage, Parse
         }
     }
 
-    let wrapper: CreateMessageDe = serde_json::from_value(raw)
-        .map_err(|error| ParseError(format!("parse: {error}")))?;
+    let wrapper: CreateMessageDe =
+        serde_json::from_value(raw).map_err(|error| ParseError(format!("parse: {error}")))?;
     let mut canonical = wrapper
         .into_canonical_value()
         .map_err(|error| ParseError(format!("parse: {error}")))?;
@@ -107,10 +111,7 @@ fn message_from_value(mut raw: serde_json::Value) -> Result<ParsedMessage, Parse
 
     let message: Message =
         serde_json::from_value(canonical.clone()).map_err(|error| ParseError(error.to_string()))?;
-    Ok(ParsedMessage {
-        message,
-        canonical,
-    })
+    Ok(ParsedMessage { message, canonical })
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -410,12 +411,14 @@ impl Component {
                 url: b.url,
                 disabled: b.disabled,
             }),
-            3 | 5 | 6 | 7 | 8 => parse_body::<SelectMenuBody>(value).map(|b| Component::SelectMenu {
-                kind: ty as u8,
-                placeholder: b.placeholder,
-                disabled: b.disabled,
-                options: b.options,
-            }),
+            3 | 5 | 6 | 7 | 8 => {
+                parse_body::<SelectMenuBody>(value).map(|b| Component::SelectMenu {
+                    kind: ty as u8,
+                    placeholder: b.placeholder,
+                    disabled: b.disabled,
+                    options: b.options,
+                })
+            }
             9 => parse_body::<SectionBody>(value).map(|b| Component::Section {
                 components: b.components,
                 accessory: b.accessory,
