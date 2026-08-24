@@ -13,7 +13,7 @@ png = ["dep:chromiumoxide", "dep:tokio", "dep:futures"]
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-pwr-ext = { path = "crates/pwr-ext" }
+pwr-ext = { path = "../pwr-ext" }
 thiserror = "2"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 clap = { version = "4", features = ["derive"] }
@@ -26,6 +26,3 @@ axum = { version = "0.8", optional = true, default-features = false, features = 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 serenity = { git = "https://github.com/serenity-rs/serenity", branch = "next", default-features = false, features = ["builder"] }
-
-[workspace]
-members = ["crates/pwr-ext"]
