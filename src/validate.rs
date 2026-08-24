@@ -16,6 +16,9 @@ pub const MIN_COLOR: i64 = 0;
 pub const MAX_COLOR: i64 = 0xFF_FFFF;
 const IS_COMPONENTS_V2: i64 = 1 << 15;
 pub const MAX_ACTION_ROW_CHILDREN: usize = 5;
+pub const MAX_TEXT_DISPLAY_CHARS: usize = 4000;
+pub const MAX_COMBINED_TEXT_CHARS: usize = 4000;
+pub const MAX_GALLERY_ITEMS: usize = 10;
 const BUTTON_STYLE_RANGE: std::ops::RangeInclusive<u8> = 1..=5;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -49,6 +52,10 @@ pub enum ValidationError {
         limit: usize,
         actual: usize,
     },
+    #[error(
+        "content and text display contents must total at most {limit} characters, got {actual}"
+    )]
+    CombinedTextTooLong { limit: usize, actual: usize },
 }
 
 pub fn validate(message: &Message) -> Result<(), ValidationError> {
@@ -93,6 +100,19 @@ pub fn validate(message: &Message) -> Result<(), ValidationError> {
 
     for (index, component) in message.components.iter().enumerate() {
         validate_component(component, &format!("components[{index}]"))?;
+    }
+
+    let combined_chars = char_len(&message.content)
+        + message
+            .components
+            .iter()
+            .map(text_display_char_count)
+            .sum::<usize>();
+    if combined_chars > MAX_COMBINED_TEXT_CHARS {
+        return Err(ValidationError::CombinedTextTooLong {
+            limit: MAX_COMBINED_TEXT_CHARS,
+            actual: combined_chars,
+        });
     }
     Ok(())
 }
@@ -186,6 +206,21 @@ fn validate_component(component: &Component, path: &str) -> Result<(), Validatio
             validate_component(accessory, &format!("{path}.accessory"))
         }
         Component::Container { components, .. } => walk_children(components, path),
+        Component::TextDisplay { content } => check_len(
+            Some(content),
+            &format!("{path}.content"),
+            MAX_TEXT_DISPLAY_CHARS,
+        ),
+        Component::MediaGallery { items } => {
+            if items.len() > MAX_GALLERY_ITEMS {
+                return Err(ValidationError::TooManyItems {
+                    path: path.to_owned(),
+                    limit: MAX_GALLERY_ITEMS,
+                    actual: items.len(),
+                });
+            }
+            Ok(())
+        }
         _ => Ok(()),
     }
 }
@@ -195,6 +230,23 @@ fn walk_children(components: &[Component], parent_path: &str) -> Result<(), Vali
         validate_component(child, &format!("{parent_path}.components[{index}]"))?;
     }
     Ok(())
+}
+
+fn text_display_char_count(component: &Component) -> usize {
+    match component {
+        Component::TextDisplay { content } => char_len(content),
+        Component::ActionRow { components } => text_display_char_count_in(components),
+        Component::Section {
+            components,
+            accessory,
+        } => text_display_char_count_in(components) + text_display_char_count(accessory),
+        Component::Container { components, .. } => text_display_char_count_in(components),
+        _ => 0,
+    }
+}
+
+fn text_display_char_count_in(components: &[Component]) -> usize {
+    components.iter().map(text_display_char_count).sum()
 }
 
 fn check_len(value: Option<&str>, path: &str, limit: usize) -> Result<(), ValidationError> {
@@ -221,6 +273,8 @@ fn char_len(text: &str) -> usize {
 mod tests {
     use super::*;
     use crate::model::Field;
+    use crate::model::MediaGalleryItem;
+    use crate::model::UnfurledMediaItem;
 
     fn plain_msg() -> Message {
         Message {
@@ -549,6 +603,99 @@ mod tests {
         );
     }
 
+    #[test]
+    fn text_display_at_exact_char_limit_passes() {
+        let msg = v2_message(vec![text_display(&sized_string(
+            MAX_TEXT_DISPLAY_CHARS,
+            'x',
+        ))]);
+        assert_eq!(validate(&msg), Ok(()));
+    }
+
+    #[test]
+    fn oversized_text_display_reports_component_content_path() {
+        let msg = v2_message(vec![text_display(&sized_string(
+            MAX_TEXT_DISPLAY_CHARS + 1,
+            'x',
+        ))]);
+        assert_eq!(
+            validate(&msg),
+            Err(ValidationError::TooLong {
+                path: "components[0].content".into(),
+                limit: MAX_TEXT_DISPLAY_CHARS,
+                actual: MAX_TEXT_DISPLAY_CHARS + 1
+            })
+        );
+    }
+
+    #[test]
+    fn two_text_displays_at_combined_limit_pass() {
+        let msg = v2_message(vec![
+            text_display(&sized_string(2000, 'a')),
+            text_display(&sized_string(2000, 'b')),
+        ]);
+        assert_eq!(validate(&msg), Ok(()));
+    }
+
+    #[test]
+    fn text_displays_over_combined_budget_are_rejected_without_single_overflow() {
+        let msg = v2_message(vec![
+            text_display(&sized_string(2000, 'a')),
+            text_display(&sized_string(2001, 'b')),
+        ]);
+        assert_eq!(
+            validate(&msg),
+            Err(ValidationError::CombinedTextTooLong {
+                limit: MAX_COMBINED_TEXT_CHARS,
+                actual: MAX_COMBINED_TEXT_CHARS + 1
+            })
+        );
+    }
+
+    #[test]
+    fn message_content_counts_toward_the_combined_text_budget() {
+        let mut msg = plain_msg();
+        msg.content = sized_string(1000, 'c');
+        msg.components = vec![Component::Container {
+            components: vec![text_display(&sized_string(3001, 't'))],
+            accent_color: None,
+            spoiler: false,
+        }];
+        assert_eq!(
+            validate(&msg),
+            Err(ValidationError::CombinedTextTooLong {
+                limit: MAX_COMBINED_TEXT_CHARS,
+                actual: MAX_COMBINED_TEXT_CHARS + 1
+            })
+        );
+    }
+
+    #[test]
+    fn content_only_message_at_content_limit_passes_combined_check() {
+        let mut msg = plain_msg();
+        msg.content = sized_string(MAX_CONTENT_CHARS, 'a');
+        assert_eq!(validate(&msg), Ok(()));
+    }
+
+    #[test]
+    fn media_gallery_at_item_limit_passes() {
+        let msg = v2_message(vec![media_gallery(MAX_GALLERY_ITEMS)]);
+        assert_eq!(validate(&msg), Ok(()));
+    }
+
+    #[test]
+    fn eleven_gallery_items_are_rejected_at_gallery_path() {
+        let msg = v2_message(vec![media_gallery(MAX_GALLERY_ITEMS + 1)]);
+        assert_eq!(
+            validate(&msg),
+            Err(ValidationError::TooManyItems {
+                path: "components[0]".into(),
+                limit: MAX_GALLERY_ITEMS,
+                actual: MAX_GALLERY_ITEMS + 1
+            })
+        );
+    }
+
     fn button(style: u8) -> Component {
         Component::Button {
             style,
@@ -562,6 +709,30 @@ mod tests {
     fn text_display(content: &str) -> Component {
         Component::TextDisplay {
             content: content.into(),
+        }
+    }
+
+    fn v2_message(components: Vec<Component>) -> Message {
+        Message {
+            flags: Some(1 << 15),
+            components,
+            ..Message::default()
+        }
+    }
+
+    fn media_gallery(item_count: usize) -> Component {
+        Component::MediaGallery {
+            items: std::iter::repeat_n(
+                MediaGalleryItem {
+                    media: UnfurledMediaItem {
+                        url: "https://cdn.example.test/item.png".into(),
+                    },
+                    description: None,
+                    spoiler: false,
+                },
+                item_count,
+            )
+            .collect(),
         }
     }
 }

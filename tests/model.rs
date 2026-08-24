@@ -3,6 +3,9 @@ use pwr_viewgen::model::Message;
 use pwr_viewgen::model::parse_message;
 use pwr_viewgen::validate::validate;
 use pwr_viewgen::validate::ValidationError;
+use pwr_viewgen::validate::MAX_COMBINED_TEXT_CHARS;
+use pwr_viewgen::validate::MAX_GALLERY_ITEMS;
+use pwr_viewgen::validate::MAX_TEXT_DISPLAY_CHARS;
 
 const SIMPLE_JSON: &str = r#"{"content": "gm"}"#;
 
@@ -332,5 +335,150 @@ fn missing_component_type_field_is_reported_in_a_parse_context() {
     assert!(
         err.to_string().contains("\"type\""),
         "error should mention the missing type field, got: {err}"
+    );
+}
+
+#[test]
+fn v2_tree_with_text_display_and_full_gallery_parses_and_validates() {
+    let items: Vec<String> = (0..MAX_GALLERY_ITEMS)
+        .map(|i| format!(r#"{{ "media": {{ "url": "https://cdn.example.test/g{i}.png" }} }}"#))
+        .collect();
+    let raw = format!(
+        r##"{{ "flags": 32768, "components": [
+            {{ "type": 10, "content": "# Release notes\nAll systems go." }},
+            {{ "type": 12, "items": [{}] }}
+        ] }}"##,
+        items.join(",")
+    );
+    let msg: Message = parse_message(&raw).expect("v2 tree parses");
+    assert_eq!(validate(&msg), Ok(()));
+}
+
+#[test]
+fn oversized_text_display_rejects_with_a_message_naming_the_limit() {
+    let content = "x".repeat(MAX_TEXT_DISPLAY_CHARS + 1);
+    let raw = format!(
+        r#"{{ "flags": 32768, "components": [ {{ "type": 10, "content": "{content}" }} ] }}"#
+    );
+    let msg: Message = parse_message(&raw).expect("parsing does not enforce limits");
+    let error = validate(&msg).expect_err("oversized text display must be rejected");
+    assert_eq!(
+        error.to_string(),
+        format!(
+            "components[0].content must be at most {MAX_TEXT_DISPLAY_CHARS} characters, got {}",
+            MAX_TEXT_DISPLAY_CHARS + 1
+        )
+    );
+}
+
+#[test]
+fn content_plus_two_text_displays_over_combined_budget_is_rejected() {
+    let content = "c".repeat(100);
+    let display = "t".repeat(2000);
+    let raw = format!(
+        r#"{{
+            "content": "{content}",
+            "components": [
+                {{ "type": 10, "content": "{display}" }},
+                {{ "type": 10, "content": "{display}" }}
+            ]
+        }}"#
+    );
+    let msg: Message = parse_message(&raw).expect("parsing does not enforce combined budget");
+    assert_eq!(
+        validate(&msg),
+        Err(ValidationError::CombinedTextTooLong {
+            limit: MAX_COMBINED_TEXT_CHARS,
+            actual: MAX_COMBINED_TEXT_CHARS + 100
+        })
+    );
+}
+
+#[test]
+fn eleven_item_gallery_is_rejected_after_parsing() {
+    let item_count = MAX_GALLERY_ITEMS + 1;
+    let items: Vec<String> = (0..item_count)
+        .map(|i| format!(r#"{{ "media": {{ "url": "https://cdn.example.test/g{i}.png" }} }}"#))
+        .collect();
+    let raw = format!(
+        r#"{{ "flags": 32768, "components": [ {{ "type": 12, "items": [{}] }} ] }}"#,
+        items.join(",")
+    );
+    let msg: Message = parse_message(&raw).expect("parsing does not enforce gallery limits");
+    assert_eq!(
+        validate(&msg),
+        Err(ValidationError::TooManyItems {
+            path: "components[0]".into(),
+            limit: MAX_GALLERY_ITEMS,
+            actual: item_count
+        })
+    );
+}
+
+#[test]
+fn section_body_text_display_counts_toward_the_combined_budget() {
+    let content = "c".repeat(100);
+    let display = "t".repeat(MAX_TEXT_DISPLAY_CHARS);
+    let raw = format!(
+        r#"{{ "content": "{content}", "components": [
+            {{
+                "type": 9,
+                "components": [ {{ "type": 10, "content": "{display}" }} ],
+                "accessory": {{ "type": 11, "media": {{ "url": "https://cdn.example.test/s.png" }} }}
+            }}
+        ] }}"#
+    );
+    let msg: Message = parse_message(&raw).expect("section tree parses");
+    assert_eq!(
+        validate(&msg),
+        Err(ValidationError::CombinedTextTooLong {
+            limit: MAX_COMBINED_TEXT_CHARS,
+            actual: MAX_TEXT_DISPLAY_CHARS + 100
+        })
+    );
+}
+
+#[test]
+fn container_text_display_counts_toward_the_combined_budget() {
+    let content = "c".repeat(100);
+    let display = "t".repeat(MAX_TEXT_DISPLAY_CHARS);
+    let raw = format!(
+        r#"{{ "content": "{content}", "components": [
+            {{
+                "type": 17,
+                "components": [ {{ "type": 10, "content": "{display}" }} ]
+            }}
+        ] }}"#
+    );
+    let msg: Message = parse_message(&raw).expect("container tree parses");
+    assert_eq!(
+        validate(&msg),
+        Err(ValidationError::CombinedTextTooLong {
+            limit: MAX_COMBINED_TEXT_CHARS,
+            actual: MAX_TEXT_DISPLAY_CHARS + 100
+        })
+    );
+}
+
+#[test]
+fn single_oversized_section_display_reports_deep_path_before_combined_budget() {
+    let display = "x".repeat(MAX_TEXT_DISPLAY_CHARS + 1);
+    let raw = format!(
+        r#"{{ "components": [
+            {{
+                "type": 9,
+                "components": [ {{ "type": 10, "content": "{display}" }} ],
+                "accessory": {{ "type": 11, "media": {{ "url": "https://cdn.example.test/s.png" }} }}
+            }}
+        ] }}"#
+    );
+    let msg: Message = parse_message(&raw).expect("parsing does not enforce limits");
+    assert_eq!(
+        validate(&msg),
+        Err(ValidationError::TooLong {
+            path: "components[0].components[0].content".into(),
+            limit: MAX_TEXT_DISPLAY_CHARS,
+            actual: MAX_TEXT_DISPLAY_CHARS + 1
+        })
     );
 }
