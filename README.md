@@ -86,3 +86,9 @@ user/role/mentionable/channel (types 5–8, rendered as closed pills), and
 premium buttons (style 6, rendered like link buttons without a URL).
 Canonicalization is lossless for rendering; webhook identity fields
 (`username`, `avatar_url`) are preserved.
+
+Note: premium buttons render but `pwr-viewgen send` still rejects them.
+That is deliberate — premium (SKU) buttons are application-owned, and a
+plain webhook cannot create them; Discord would reject the request. The
+renderer keeps them visible so previews of bot-produced payloads stay
+faithful.
