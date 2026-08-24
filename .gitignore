@@ -1,1 +1,4 @@
 /target
+
+# playwright mcp browser artifacts
+.playwright-mcp/
