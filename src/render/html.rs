@@ -17,6 +17,22 @@ pub(crate) fn esc(text: &str) -> String {
         .replace('\'', "&#39;")
 }
 
+pub(crate) fn write_emoji_img(name: &str, id: &str, animated: bool, out: &mut String) {
+    let ext = if animated { "gif" } else { "png" };
+    out.push_str(&format!(
+        "<img class=\"emoji\" alt=\":{}:\" src=\"https://cdn.discordapp.com/emojis/{}.{ext}\">",
+        esc(name),
+        esc(id)
+    ));
+}
+
+pub(crate) fn write_color_bar(class: &str, color: i64, out: &mut String) {
+    let hex = color.clamp(0, 0xFF_FFFF);
+    out.push_str(&format!(
+        "<div class=\"{class}\" style=\"background:#{hex:06x}\"></div>"
+    ));
+}
+
 pub(crate) fn write_blocks(blocks: &[Block], out: &mut String, ctx: &RenderCtx) {
     for block in blocks {
         write_block(block, out, ctx);
@@ -103,12 +119,7 @@ fn write_span(span: &Span, out: &mut String, ctx: &RenderCtx) {
             esc(url)
         )),
         Span::Emoji { id, name, animated } => {
-            let ext = if *animated { "gif" } else { "png" };
-            out.push_str(&format!(
-                "<img class=\"emoji\" alt=\":{}:\" src=\"https://cdn.discordapp.com/emojis/{}.{ext}\">",
-                esc(name),
-                esc(id)
-            ));
+            write_emoji_img(name, id, *animated, out);
         }
         Span::Mention(kind) => {
             let label = match kind {
@@ -150,10 +161,7 @@ fn wrap_class(out: &mut String, class: &str, inner: &[Span], ctx: &RenderCtx) {
 pub(crate) fn write_embed(embed: &Embed, out: &mut String, ctx: &RenderCtx) {
     out.push_str("<div class=\"eg-embed\">");
     if let Some(color) = embed.color {
-        let hex = color.clamp(0, 0xFF_FFFF);
-        out.push_str(&format!(
-            "<div class=\"eg-embed-bar\" style=\"background:#{hex:06x}\"></div>"
-        ));
+        write_color_bar("eg-embed-bar", color, out);
     }
     out.push_str("<div class=\"eg-embed-inner\">");
 

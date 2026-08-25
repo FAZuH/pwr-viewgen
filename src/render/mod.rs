@@ -61,7 +61,7 @@ fn render_message_html_with_width(
         out.push_str("<div class=\"eg-body\">");
     }
 
-    let components_v2 = message.flags.is_some_and(|flags| flags & (1 << 15) != 0);
+    let components_v2 = message.is_components_v2();
     if !components_v2 && !message.content.trim().is_empty() {
         out.push_str("<div class=\"eg-content\">");
         html::write_blocks(&markdown::parse(&message.content), &mut out, &ctx);

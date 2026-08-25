@@ -81,7 +81,7 @@ const COMPONENTS_V2_JSON: &str = r##"{
 
 #[test]
 fn golden_simple() {
-    let msg = parse_message(SIMPLE_JSON).unwrap();
+    let msg = parse_message(SIMPLE_JSON).unwrap().message;
     assert_eq!(
         render_message_html(&msg, NOW),
         concat!(
@@ -96,7 +96,7 @@ fn golden_simple() {
 
 #[test]
 fn golden_full_embed() {
-    let msg = parse_message(FULL_JSON).unwrap();
+    let msg = parse_message(FULL_JSON).unwrap().message;
     assert_eq!(
         render_message_html(&msg, NOW),
         concat!(
@@ -145,7 +145,7 @@ fn golden_full_embed() {
 
 #[test]
 fn golden_components_v1_buttons_and_select() {
-    let msg = parse_message(COMPONENTS_V1_JSON).unwrap();
+    let msg = parse_message(COMPONENTS_V1_JSON).unwrap().message;
     assert_eq!(
         render_message_html(&msg, NOW),
         concat!(
@@ -172,7 +172,7 @@ fn golden_components_v1_buttons_and_select() {
 
 #[test]
 fn golden_components_v2_renders_all_container_children() {
-    let msg = parse_message(COMPONENTS_V2_JSON).unwrap();
+    let msg = parse_message(COMPONENTS_V2_JSON).unwrap().message;
     assert_eq!(
         render_message_html(&msg, NOW),
         concat!(
@@ -222,7 +222,7 @@ fn v2_flag_suppresses_content_and_embed_chrome_even_when_present() {
         "embeds": [{ "title": "vanish too" }],
         "components": [ { "type": 10, "content": "kept" } ]
     }"#;
-    let msg = parse_message(raw).unwrap();
+    let msg = parse_message(raw).unwrap().message;
     let html = render_message_html(&msg, NOW);
     assert_eq!(
         html,
@@ -240,7 +240,7 @@ fn v2_flag_suppresses_content_and_embed_chrome_even_when_present() {
 
 #[test]
 fn full_document_has_doctype_and_stylesheet_once() {
-    let msg = parse_message(SIMPLE_JSON).unwrap();
+    let msg = parse_message(SIMPLE_JSON).unwrap().message;
     let html = render_html(&msg, NOW);
     assert!(html.starts_with("<!DOCTYPE html>"));
     assert_eq!(html.matches("<style>").count(), 1);
@@ -258,7 +258,7 @@ const SELECT_KINDS_JSON: &str = r#"{
 
 #[test]
 fn golden_select_kinds_user_role_mentionable_channel_render_closed_pills() {
-    let msg = parse_message(SELECT_KINDS_JSON).unwrap();
+    let msg = parse_message(SELECT_KINDS_JSON).unwrap().message;
     let html = render_message_html(&msg, NOW);
     assert_eq!(
         html.matches(r#"<div class="eg-select"><span>"#).count(),
@@ -280,7 +280,7 @@ fn golden_premium_button_renders_like_link_button_without_url() {
             ]}
         ]
     }"#;
-    let msg = parse_message(raw).unwrap();
+    let msg = parse_message(raw).unwrap().message;
     assert_eq!(
         render_message_html(&msg, NOW),
         concat!(
@@ -311,7 +311,7 @@ fn golden_gallery_item_descriptions_render_as_image_alt_text() {
             }
         ]
     }"#;
-    let msg = parse_message(raw).unwrap();
+    let msg = parse_message(raw).unwrap().message;
     assert_eq!(
         render_message_html(&msg, NOW),
         concat!(

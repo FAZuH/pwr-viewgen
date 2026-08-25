@@ -72,8 +72,8 @@ run the `send` command above.
 
 Errors: oversized/invalid payloads are rejected before any request
 (`message failed validation: …`). Non-2xx responses print Discord's error
-JSON and exit non-zero. A single 429 rate-limit response is retried once,
-honoring `retry_after`.
+JSON and exit non-zero. Send makes a single request; there is no automatic
+retry.
 
 ### Accepted inputs
 

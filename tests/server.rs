@@ -88,20 +88,23 @@ async fn render_accepts_string_form_json_payload() {
 }
 
 #[tokio::test]
-async fn png_accepts_string_form_json_past_payload_parsing() {
+async fn render_accepts_oversized_content_because_rendering_stays_permissive() {
     let oversized = format!(r#"{{"content": "{}"}}"#, "x".repeat(2001));
     let raw = serde_json::to_string(&oversized).expect("oversized is json text");
-    let payload = format!(r#"{{"json": {raw}, "width": 600, "scale": 2}}"#);
-    let response = post_json("/api/png", &payload).await;
+    let payload = format!(r#"{{"json": {raw}, "width": 600}}"#);
+    let response = post_json("/api/render", &payload).await;
     assert_eq!(
         response.status(),
-        StatusCode::BAD_REQUEST,
-        "string form must reach payload validation (chrome not needed to fail here)"
+        StatusCode::OK,
+        "render must not run the validate gate"
     );
     let body = body_string(response).await;
+    let value: serde_json::Value = serde_json::from_str(&body).expect("json response");
+    let html = value["html"].as_str().expect("html field");
     assert!(
-        body.contains("content must be at most 2000 characters"),
-        "validation error expected (not a type mismatch), got: {body}"
+        html.contains(&format!("<p>{}</p>", "x".repeat(2001))),
+        "all 2001 characters render, got html ending: {}",
+        &html[html.len().saturating_sub(2100)..]
     );
 }
 
@@ -111,11 +114,13 @@ async fn send_accepts_string_form_json_past_payload_parsing() {
     let raw = serde_json::to_string(&oversized).expect("oversized is json text");
     let payload = format!(r#"{{"json": {raw}, "url": "https://discord.com/api/webhooks/1/abc"}}"#);
     let response = post_json("/api/send", &payload).await;
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(response.status(), StatusCode::OK);
     let body = body_string(response).await;
     assert!(
-        body.contains("content must be at most 2000 characters") && !body.contains("invalid type"),
-        "string must be parsed into a Message, got: {body}"
+        body.contains(r#""ok":false"#)
+            && body.contains("content must be at most 2000 characters")
+            && !body.contains("invalid type"),
+        "string must be parsed into a Message and rejected by the send gate, got: {body}"
     );
 }
 
@@ -125,12 +130,12 @@ async fn send_reports_validation_failure_without_network() {
     let payload =
         format!(r#"{{"json": {oversized}, "url": "https://discord.com/api/webhooks/1/abc"}}"#);
     let response = post_json("/api/send", &payload).await;
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(response.status(), StatusCode::OK);
     let body = body_string(response).await;
     assert!(
         body.contains("message failed validation")
             && body.contains("content must be at most 2000 characters"),
-        "validation detail expected, got: {body}"
+        "validation detail expected from webhook::prepare before any request, got: {body}"
     );
 }
 

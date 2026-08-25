@@ -11,7 +11,7 @@ const NOW: i64 = 1_755_878_400;
 fn spike_captures_png_of_full_fixture() {
     let json =
         std::fs::read_to_string("tests/fixtures/png_spike.json").expect("spike fixture exists");
-    let message = parse_message(&json).expect("fixture parses");
+    let message = parse_message(&json).expect("fixture parses").message;
 
     let html = render_html_with_width(&message, NOW, 600);
     let png = capture_html(&html, 600, 2.0).expect("headless capture succeeds");

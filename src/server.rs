@@ -5,7 +5,6 @@ use axum::response::Response;
 use axum::Json;
 
 use crate::render::{self};
-use crate::validate::validate;
 
 #[cfg(feature = "png")]
 const DEFAULT_SCALE: u32 = 2;
@@ -104,11 +103,9 @@ async fn api_png(Json(request): Json<PngRequest>) -> Result<Response, ApiError> 
 async fn api_send(Json(request): Json<SendRequest>) -> Result<Json<serde_json::Value>, ApiError> {
     let parsed = parse_message(&request.json)?;
     let url = request.url;
-    let result = tokio::task::spawn_blocking(move || {
-        crate::webhook::send(&url, &parsed.message, &parsed.canonical.to_string(), false)
-    })
-    .await
-    .map_err(|error| internal(format!("send task failed: {error}")))?;
+    let result = tokio::task::spawn_blocking(move || crate::webhook::send(&url, &parsed, false))
+        .await
+        .map_err(|error| internal(format!("send task failed: {error}")))?;
     Ok(Json(match result {
         Ok(_) => serde_json::json!({ "ok": true }),
         Err(error) => serde_json::json!({ "ok": false, "error": error.to_string() }),
@@ -116,14 +113,11 @@ async fn api_send(Json(request): Json<SendRequest>) -> Result<Json<serde_json::V
 }
 
 fn parse_message(value: &serde_json::Value) -> Result<crate::model::ParsedMessage, ApiError> {
-    let parsed = match value {
+    match value {
         serde_json::Value::String(raw) => raw.parse::<crate::model::ParsedMessage>(),
         _ => crate::model::ParsedMessage::from_value(value),
     }
-    .map_err(|error| bad_request(format!("invalid message JSON: {error}")))?;
-    validate(&parsed.message)
-        .map_err(|error| bad_request(format!("message failed validation: {error}")))?;
-    Ok(parsed)
+    .map_err(|error| bad_request(format!("invalid message JSON: {error}")))
 }
 
 fn bad_request(message: String) -> ApiError {

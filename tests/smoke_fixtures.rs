@@ -662,7 +662,7 @@ mod tests {
     #[test]
     fn every_generated_fixture_passes_validation_at_the_public_limits() {
         for fixture in all_fixtures() {
-            let message = parse_message(&fixture.json).expect("fixture parses");
+            let message = parse_message(&fixture.json).expect("fixture parses").message;
             assert_eq!(
                 validate::validate(&message),
                 Ok(()),

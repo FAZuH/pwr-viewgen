@@ -1,10 +1,9 @@
 use std::time::Duration;
 
-use crate::model::Message;
+use crate::model::ParsedMessage;
 use crate::validate::validate;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
-const DEFAULT_RETRY_AFTER_SECS: f64 = 1.0;
 
 pub const WAIT_PARAM: &str = "wait=true";
 
@@ -59,12 +58,11 @@ pub fn build_request(
 
 pub fn prepare(
     webhook_url: &str,
-    message: &Message,
-    canonical_body: &str,
+    parsed: &ParsedMessage,
     wait: bool,
 ) -> Result<WebhookRequest, SendError> {
-    validate(message)?;
-    build_request(webhook_url, canonical_body, wait)
+    validate(&parsed.message)?;
+    build_request(webhook_url, &parsed.canonical.to_string(), wait)
 }
 
 pub fn extract_message_id(response_body: &str) -> Option<String> {
@@ -75,33 +73,24 @@ pub fn extract_message_id(response_body: &str) -> Option<String> {
         .map(str::to_owned)
 }
 
-pub fn retry_after_seconds(rate_limit_body: &str) -> f64 {
-    serde_json::from_str::<serde_json::Value>(rate_limit_body)
-        .ok()
-        .and_then(|value| value.get("retry_after").and_then(serde_json::Value::as_f64))
-        .map(|seconds| seconds.max(0.0))
-        .unwrap_or(DEFAULT_RETRY_AFTER_SECS)
-}
-
 pub fn send(
     webhook_url: &str,
-    message: &Message,
-    canonical_body: &str,
+    parsed: &ParsedMessage,
     wait: bool,
 ) -> Result<SendResult, SendError> {
-    let request = prepare(webhook_url, message, canonical_body, wait)?;
+    let request = prepare(webhook_url, parsed, wait)?;
     let agent = ureq::AgentBuilder::new().timeout(REQUEST_TIMEOUT).build();
-    execute(&agent, &request)
+    post(&agent, &request)
 }
 
-fn execute(agent: &ureq::Agent, request: &WebhookRequest) -> Result<SendResult, SendError> {
-    match post(agent, request) {
-        Ok(result) => Ok(result),
-        Err(SendError::Discord { status: 429, body }) => {
-            std::thread::sleep(Duration::from_secs_f64(retry_after_seconds(&body)));
-            post(agent, request)
-        }
-        Err(error) => Err(error),
+fn map_send_response(status: u16, body: String) -> Result<SendResult, SendError> {
+    if (200..300).contains(&status) {
+        Ok(SendResult {
+            status,
+            message_id: extract_message_id(&body),
+        })
+    } else {
+        Err(SendError::Discord { status, body })
     }
 }
 
@@ -111,32 +100,31 @@ fn post(agent: &ureq::Agent, request: &WebhookRequest) -> Result<SendResult, Sen
         req = req.set(name, value);
     }
     match req.send_string(&request.body) {
-        Ok(response) => Ok(finish(response)),
-        Err(ureq::Error::Status(status, response)) => {
+        Ok(response) | Err(ureq::Error::Status(_, response)) => {
+            let status = response.status();
             let body = response.into_string().unwrap_or_default();
-            Err(SendError::Discord { status, body })
+            map_send_response(status, body)
         }
         Err(ureq::Error::Transport(transport)) => Err(SendError::Transport(transport.to_string())),
-    }
-}
-
-fn finish(response: ureq::Response) -> SendResult {
-    let status = response.status();
-    let body = response.into_string().unwrap_or_default();
-    SendResult {
-        status,
-        message_id: extract_message_id(&body),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::Message;
 
     fn plain_message() -> Message {
         Message {
             content: "hello".into(),
             ..Message::default()
+        }
+    }
+
+    fn parsed_with(message: Message, canonical: &str) -> ParsedMessage {
+        ParsedMessage {
+            message,
+            canonical: serde_json::from_str(canonical).expect("canonical is json"),
         }
     }
 
@@ -202,16 +190,17 @@ mod tests {
 
     #[test]
     fn prepare_forwards_canonical_body_verbatim_after_validation() {
-        let message = plain_message();
-        let canonical = r#"{"content":"hello","custom_id":"kept"}"#;
-        let req = prepare(
-            "https://discord.com/api/webhooks/1/abc",
-            &message,
-            canonical,
-            false,
-        )
-        .unwrap();
-        assert_eq!(req.body, canonical);
+        let parsed = parsed_with(
+            plain_message(),
+            r#"{"content":"hello","custom_id":"kept"}"#,
+        );
+        let req = prepare("https://discord.com/api/webhooks/1/abc", &parsed, false).unwrap();
+        assert_eq!(
+            req.body,
+            parsed.canonical.to_string(),
+            "canonical body is forwarded verbatim"
+        );
+        assert_eq!(req.body, r#"{"content":"hello","custom_id":"kept"}"#);
     }
 
     #[test]
@@ -235,13 +224,7 @@ mod tests {
         let parsed = raw
             .parse::<crate::model::ParsedMessage>()
             .expect("payload parses");
-        let req = prepare(
-            "https://discord.com/api/webhooks/1/abc",
-            &parsed.message,
-            &parsed.canonical.to_string(),
-            false,
-        )
-        .unwrap();
+        let req = prepare("https://discord.com/api/webhooks/1/abc", &parsed, false).unwrap();
 
         assert!(
             req.body.contains(r#""custom_id":"do_thing""#),
@@ -269,13 +252,9 @@ mod tests {
     fn oversized_content_still_fails_before_request_is_built() {
         let mut message = plain_message();
         message.content = "x".repeat(2001);
+        let parsed = parsed_with(message, "{}");
         assert!(matches!(
-            prepare(
-                "https://discord.com/api/webhooks/1/abc",
-                &message,
-                "{}",
-                false
-            ),
+            prepare("https://discord.com/api/webhooks/1/abc", &parsed, false),
             Err(SendError::Validation(_))
         ));
     }
@@ -297,17 +276,43 @@ mod tests {
     }
 
     #[test]
-    fn retry_after_is_read_from_rate_limit_body() {
+    fn success_response_with_id_maps_to_ok_result() {
+        let body =
+            r#"{"id":"1199368822186135553","channel_id":"1","content":"hello"}"#.to_owned();
         assert_eq!(
-            retry_after_seconds(r#"{"retry_after": 1.234, "global": false}"#),
-            1.234
+            map_send_response(200, body),
+            Ok(SendResult {
+                status: 200,
+                message_id: Some("1199368822186135553".to_owned()),
+            })
         );
     }
 
     #[test]
-    fn missing_retry_after_falls_back_to_one_second() {
-        assert_eq!(retry_after_seconds("{}"), 1.0);
-        assert_eq!(retry_after_seconds(""), 1.0);
-        assert_eq!(retry_after_seconds(r#"{"retry_after": -5}"#), 0.0);
+    fn rate_limit_response_surfaces_discord_429_info_as_an_error() {
+        let body = r#"{"retry_after": 1.234, "global": false,
+            "message": "You are being rate limited.", "code": 0}"#
+            .to_owned();
+        assert_eq!(
+            map_send_response(429, body),
+            Err(SendError::Discord {
+                status: 429,
+                body: r#"{"retry_after": 1.234, "global": false,
+            "message": "You are being rate limited.", "code": 0}"#
+                    .to_owned(),
+            })
+        );
+    }
+
+    #[test]
+    fn non_2xx_response_maps_discord_error_body_to_discord_error() {
+        let body = r#"{"message": "Unknown Webhook", "code": 10015}"#.to_owned();
+        assert_eq!(
+            map_send_response(404, body),
+            Err(SendError::Discord {
+                status: 404,
+                body: r#"{"message": "Unknown Webhook", "code": 10015}"#.to_owned(),
+            })
+        );
     }
 }

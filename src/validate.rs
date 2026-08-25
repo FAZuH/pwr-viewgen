@@ -14,7 +14,6 @@ pub const MAX_FOOTER_TEXT_CHARS: usize = 2048;
 pub const MAX_AUTHOR_NAME_CHARS: usize = 256;
 pub const MIN_COLOR: i64 = 0;
 pub const MAX_COLOR: i64 = 0xFF_FFFF;
-const IS_COMPONENTS_V2: i64 = 1 << 15;
 pub const MAX_ACTION_ROW_CHILDREN: usize = 5;
 pub const MAX_TEXT_DISPLAY_CHARS: usize = 4000;
 pub const MAX_COMBINED_TEXT_CHARS: usize = 4000;
@@ -59,10 +58,7 @@ pub enum ValidationError {
 }
 
 pub fn validate(message: &Message) -> Result<(), ValidationError> {
-    let components_v2 = message
-        .flags
-        .map(|flags| flags & IS_COMPONENTS_V2 != 0)
-        .unwrap_or(false);
+    let components_v2 = message.is_components_v2();
     if components_v2 {
         if !message.content.is_empty() {
             return Err(ValidationError::ForbiddenWithComponentsV2 {

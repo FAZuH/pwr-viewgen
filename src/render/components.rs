@@ -4,6 +4,8 @@ use crate::model::Emoji;
 use crate::model::UnfurledMediaItem;
 use crate::render::html::esc;
 use crate::render::html::write_blocks;
+use crate::render::html::write_color_bar;
+use crate::render::html::write_emoji_img;
 use crate::render::html::RenderCtx;
 
 pub(crate) fn write_components(components: &[Component], out: &mut String, ctx: &RenderCtx) {
@@ -15,6 +17,25 @@ pub(crate) fn write_components(components: &[Component], out: &mut String, ctx: 
         write_component(component, out, ctx);
     }
     out.push_str("</div>");
+}
+
+fn write_spoilerable(
+    out: &mut String,
+    open_tag: &str,
+    spoiler: bool,
+    close_tag: &str,
+    content: impl FnOnce(&mut String),
+) {
+    out.push_str(open_tag);
+    if spoiler {
+        out.push_str(" eg-has-spoiler");
+    }
+    out.push_str("\">");
+    content(out);
+    if spoiler {
+        out.push_str("<div class=\"spoiler-overlay\"></div>");
+    }
+    out.push_str(close_tag);
 }
 
 fn write_component(component: &Component, out: &mut String, ctx: &RenderCtx) {
@@ -114,17 +135,11 @@ fn write_component(component: &Component, out: &mut String, ctx: &RenderCtx) {
         }
         Component::File { file, spoiler } => {
             let name = file_name(&file.url);
-            out.push_str("<div class=\"eg-file-wrap");
-            if *spoiler {
-                out.push_str(" eg-has-spoiler");
-            }
-            out.push_str("\"><a class=\"eg-file-card\" href=\"#\"><span class=\"eg-file-name\">");
-            out.push_str(&esc(&name));
-            out.push_str("</span><span class=\"eg-file-download\"></span></a>");
-            if *spoiler {
-                out.push_str("<div class=\"spoiler-overlay\"></div>");
-            }
-            out.push_str("</div>");
+            write_spoilerable(out, "<div class=\"eg-file-wrap", *spoiler, "</div>", |out| {
+                out.push_str("<a class=\"eg-file-card\" href=\"#\"><span class=\"eg-file-name\">");
+                out.push_str(&esc(&name));
+                out.push_str("</span><span class=\"eg-file-download\"></span></a>");
+            });
         }
         Component::Separator { divider, spacing } => {
             let size = match spacing.unwrap_or(1) {
@@ -141,26 +156,22 @@ fn write_component(component: &Component, out: &mut String, ctx: &RenderCtx) {
             accent_color,
             spoiler,
         } => {
-            out.push_str("<div class=\"eg-container");
-            if *spoiler {
-                out.push_str(" eg-has-spoiler");
-            }
-            out.push_str("\">");
-            if let Some(color) = accent_color {
-                out.push_str(&format!(
-                    "<div class=\"eg-container-bar\" style=\"background:#{:06x}\"></div>",
-                    (*color).clamp(0, 0xFF_FFFF)
-                ));
-            }
-            out.push_str("<div class=\"eg-container-inner\">");
-            for child in components {
-                write_component(child, out, ctx);
-            }
-            out.push_str("</div>");
-            if *spoiler {
-                out.push_str("<div class=\"spoiler-overlay\"></div>");
-            }
-            out.push_str("</div>");
+            write_spoilerable(
+                out,
+                "<div class=\"eg-container",
+                *spoiler,
+                "</div>",
+                |out| {
+                    if let Some(color) = accent_color {
+                        write_color_bar("eg-container-bar", *color, out);
+                    }
+                    out.push_str("<div class=\"eg-container-inner\">");
+                    for child in components {
+                        write_component(child, out, ctx);
+                    }
+                    out.push_str("</div>");
+                },
+            );
         }
     }
 }
@@ -192,7 +203,12 @@ fn write_accessory(accessory: &Component, out: &mut String, ctx: &RenderCtx) {
 
 fn push_button_content(label: Option<&str>, emoji: Option<&Emoji>, out: &mut String) {
     if let Some(emoji) = emoji {
-        push_emoji(emoji, out);
+        write_emoji_img(
+            &emoji.name,
+            emoji.id.as_deref().unwrap_or_default(),
+            emoji.animated,
+            out,
+        );
     }
     if let Some(label) = label {
         out.push_str(&format!("<span>{}</span>", esc(label)));
@@ -206,31 +222,14 @@ fn push_media_figure(
     class: &str,
     out: &mut String,
 ) {
-    out.push_str("<figure class=\"eg-media");
-    if spoiler {
-        out.push_str(" eg-has-spoiler");
-    }
-    out.push_str("\">");
-    let alt = description.unwrap_or("");
-    out.push_str(&format!(
-        "<img class=\"{class}\" src=\"{}\" alt=\"{}\">",
-        esc(&media.url),
-        esc(alt)
-    ));
-    if spoiler {
-        out.push_str("<div class=\"spoiler-overlay\"></div>");
-    }
-    out.push_str("</figure>");
-}
-
-fn push_emoji(emoji: &Emoji, out: &mut String) {
-    let ext = if emoji.animated { "gif" } else { "png" };
-    let id = emoji.id.clone().unwrap_or_default();
-    out.push_str(&format!(
-        "<img class=\"emoji\" alt=\":{}:\" src=\"https://cdn.discordapp.com/emojis/{}.{ext}\">",
-        esc(&emoji.name),
-        esc(&id)
-    ));
+    write_spoilerable(out, "<figure class=\"eg-media", spoiler, "</figure>", |out| {
+        let alt = description.unwrap_or("");
+        out.push_str(&format!(
+            "<img class=\"{class}\" src=\"{}\" alt=\"{}\">",
+            esc(&media.url),
+            esc(alt)
+        ));
+    });
 }
 
 fn button_class(style: u8) -> &'static str {

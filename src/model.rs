@@ -1,6 +1,5 @@
 use pwr_ext::prelude::CreateMessageDe;
 use serde::Deserialize;
-use serde::Serialize;
 
 /// A message-parsing failure, either from malformed JSON or from payload
 /// shapes upstream serenity builders cannot represent (spec D2).
@@ -15,14 +14,15 @@ impl std::fmt::Display for ParseError {
 
 impl std::error::Error for ParseError {}
 
-/// Parses webhook-execution JSON into the render-side [`Message`] view.
+/// Parses webhook-execution JSON into a [`ParsedMessage`] — the render-side
+/// [`Message`] view together with the canonical body it was loaded from.
 ///
 /// Pipeline per spec D1: `str -> Value -> pwr-ext wrappers (strict,
 /// upstream-canonical) -> serde_json::to_value -> Message::from_value`.
 /// Unknown component types, invalid select-menu kinds, and other
 /// non-builder-shaped payloads error here before any rendering happens.
-pub fn parse_message(json: &str) -> Result<Message, ParseError> {
-    json.parse::<ParsedMessage>().map(|parsed| parsed.message)
+pub fn parse_message(json: &str) -> Result<ParsedMessage, ParseError> {
+    json.parse::<ParsedMessage>()
 }
 
 /// A parsed message together with the canonical payload the view was loaded
@@ -114,7 +114,7 @@ fn message_from_value(mut raw: serde_json::Value) -> Result<ParsedMessage, Parse
     Ok(ParsedMessage { message, canonical })
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 pub struct Message {
     #[serde(default)]
     pub content: String,
@@ -132,7 +132,14 @@ pub struct Message {
     pub components: Vec<Component>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+impl Message {
+    /// True when the payload carries the components v2 flag (bit 15).
+    pub fn is_components_v2(&self) -> bool {
+        self.flags.is_some_and(|flags| flags & (1 << 15) != 0)
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 pub struct Embed {
     #[serde(default)]
     pub title: Option<String>,
@@ -156,19 +163,19 @@ pub struct Embed {
     pub fields: Vec<Field>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 pub struct Footer {
     pub text: String,
     #[serde(default)]
     pub icon_url: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 pub struct EmbedImage {
     pub url: String,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 pub struct Author {
     pub name: String,
     #[serde(default)]
@@ -177,7 +184,7 @@ pub struct Author {
     pub icon_url: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 pub struct Field {
     pub name: String,
     pub value: String,
@@ -185,7 +192,7 @@ pub struct Field {
     pub inline: bool,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 pub struct Emoji {
     #[serde(default)]
     pub id: Option<String>,
@@ -194,7 +201,7 @@ pub struct Emoji {
     pub animated: bool,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 pub struct SelectOption {
     pub label: String,
     #[serde(default)]
@@ -203,12 +210,12 @@ pub struct SelectOption {
     pub emoji: Option<Emoji>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 pub struct UnfurledMediaItem {
     pub url: String,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 pub struct MediaGalleryItem {
     pub media: UnfurledMediaItem,
     #[serde(default)]
@@ -217,15 +224,6 @@ pub struct MediaGalleryItem {
     pub spoiler: bool,
 }
 
-/// Wire format uses numeric `type` discriminants (1 action row, 2 button,
-/// 3 select menu, 9 section, 10 text display, 11 thumbnail, 12 media gallery,
-/// 13 file, 14 separator, 17 container), so deserialization peeks at `type`
-/// via an intermediate JSON value.
-///
-/// View-side loader seam: `message_from_value` reads the pwr-ext-canonical
-/// payload into this tree. Discord-shape *validation* happens upstream in
-/// pwr-ext; this dispatch assumes well-formed tags and keeps the unknown-type
-/// arm only as an exhaustive-match safeguard.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Component {
     ActionRow {
@@ -281,116 +279,6 @@ impl<'de> Deserialize<'de> for Component {
     {
         let value = serde_json::Value::deserialize(deserializer)?;
         Self::from_json(value).map_err(serde::de::Error::custom)
-    }
-}
-
-impl Serialize for Component {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let (ty, value) = match self {
-            Component::ActionRow { components } => (
-                1,
-                serde_json::to_value(ActionRowBody {
-                    components: components.clone(),
-                }),
-            ),
-            Component::Button {
-                style,
-                label,
-                emoji,
-                url,
-                disabled,
-            } => (
-                2,
-                serde_json::to_value(ButtonBody {
-                    style: *style,
-                    label: label.clone(),
-                    emoji: emoji.clone(),
-                    url: url.clone(),
-                    disabled: *disabled,
-                }),
-            ),
-            Component::SelectMenu {
-                kind,
-                placeholder,
-                disabled,
-                options,
-            } => (
-                *kind,
-                serde_json::to_value(SelectMenuBody {
-                    placeholder: placeholder.clone(),
-                    disabled: *disabled,
-                    options: options.clone(),
-                }),
-            ),
-            Component::TextDisplay { content } => (
-                10,
-                serde_json::to_value(TextDisplayBody {
-                    content: content.clone(),
-                }),
-            ),
-            Component::Section {
-                components,
-                accessory,
-            } => (
-                9,
-                serde_json::to_value(SectionBody {
-                    components: components.clone(),
-                    accessory: accessory.clone(),
-                }),
-            ),
-            Component::Thumbnail {
-                media,
-                description,
-                spoiler,
-            } => (
-                11,
-                serde_json::to_value(ThumbnailBody {
-                    media: media.clone(),
-                    description: description.clone(),
-                    spoiler: *spoiler,
-                }),
-            ),
-            Component::MediaGallery { items } => (
-                12,
-                serde_json::to_value(MediaGalleryBody {
-                    items: items.clone(),
-                }),
-            ),
-            Component::File { file, spoiler } => (
-                13,
-                serde_json::to_value(FileBody {
-                    file: file.clone(),
-                    spoiler: *spoiler,
-                }),
-            ),
-            Component::Separator { divider, spacing } => (
-                14,
-                serde_json::to_value(SeparatorBody {
-                    divider: *divider,
-                    spacing: *spacing,
-                }),
-            ),
-            Component::Container {
-                components,
-                accent_color,
-                spoiler,
-            } => (
-                17,
-                serde_json::to_value(ContainerBody {
-                    components: components.clone(),
-                    accent_color: *accent_color,
-                    spoiler: *spoiler,
-                }),
-            ),
-        };
-        let mut object = value.map_err(serde::ser::Error::custom)?;
-        if let serde_json::Value::Object(ref mut map) = object {
-            map.insert("type".to_owned(), serde_json::Value::Number(ty.into()));
-        }
-        object.serialize(serializer)
     }
 }
 
@@ -454,13 +342,13 @@ fn parse_body<B: serde::de::DeserializeOwned>(value: serde_json::Value) -> Resul
     serde_json::from_value(value).map_err(|e| e.to_string())
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize)]
 struct ActionRowBody {
     #[serde(default)]
     components: Vec<Component>,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize)]
 struct ButtonBody {
     style: u8,
     #[serde(default)]
@@ -473,7 +361,7 @@ struct ButtonBody {
     disabled: bool,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize)]
 struct SelectMenuBody {
     #[serde(default)]
     placeholder: Option<String>,
@@ -483,19 +371,19 @@ struct SelectMenuBody {
     options: Vec<SelectOption>,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize)]
 struct TextDisplayBody {
     content: String,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize)]
 struct SectionBody {
     #[serde(default)]
     components: Vec<Component>,
     accessory: Box<Component>,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize)]
 struct ThumbnailBody {
     media: UnfurledMediaItem,
     #[serde(default)]
@@ -504,19 +392,19 @@ struct ThumbnailBody {
     spoiler: bool,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize)]
 struct MediaGalleryBody {
     items: Vec<MediaGalleryItem>,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize)]
 struct FileBody {
     file: UnfurledMediaItem,
     #[serde(default)]
     spoiler: bool,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize)]
 struct SeparatorBody {
     #[serde(default)]
     divider: bool,
@@ -524,7 +412,7 @@ struct SeparatorBody {
     spacing: Option<u8>,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize)]
 struct ContainerBody {
     #[serde(default)]
     components: Vec<Component>,
@@ -540,7 +428,7 @@ mod tests {
 
     #[test]
     fn bare_content_object_parses_with_defaults() {
-        let msg = parse_message(r#"{"content": "hello world"}"#).expect("bare payload parses");
+        let msg = parse_message(r#"{"content": "hello world"}"#).expect("bare payload parses").message;
         assert_eq!(msg.content, "hello world");
         assert_eq!(msg.username, None);
         assert_eq!(msg.avatar_url, None);
@@ -579,7 +467,7 @@ mod tests {
                 }
             ]
         }"#;
-        let msg = parse_message(raw).expect("full payload parses");
+        let msg = parse_message(raw).expect("full payload parses").message;
 
         assert_eq!(msg.username.as_deref(), Some("Notifier"));
         assert!(msg.tts);
@@ -663,7 +551,7 @@ mod tests {
                 }
             ]
         }"#;
-        let msg = parse_message(raw).expect("v1 components parse");
+        let msg = parse_message(raw).expect("v1 components parse").message;
 
         let [row, menu] = msg.components.as_slice() else {
             panic!("expected action row + select menu");
@@ -767,7 +655,7 @@ mod tests {
                 }
             ]
         }"##;
-        let msg = parse_message(raw).expect("v2 components parse");
+        let msg = parse_message(raw).expect("v2 components parse").message;
 
         assert_eq!(msg.flags, Some(1 << 15));
         assert_eq!(
