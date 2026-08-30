@@ -97,14 +97,18 @@ const COMPONENTS_V2_JSON: &str = r##"{
 
 #[test]
 fn simple_payload_round_trips_through_parse_and_validate() {
-    let msg: Message = parse_message(SIMPLE_JSON).expect("simple payload parses").message;
+    let msg: Message = parse_message(SIMPLE_JSON)
+        .expect("simple payload parses")
+        .message;
     assert_eq!(msg.content, "gm");
     assert_eq!(validate(&msg), Ok(()));
 }
 
 #[test]
 fn full_payload_round_trips_through_parse_and_validate() {
-    let msg: Message = parse_message(FULL_JSON).expect("full payload parses").message;
+    let msg: Message = parse_message(FULL_JSON)
+        .expect("full payload parses")
+        .message;
     assert_eq!(msg.username.as_deref(), Some("Notifier"));
     let [embed] = msg.embeds.as_slice() else {
         panic!("expected one embed");
@@ -115,14 +119,18 @@ fn full_payload_round_trips_through_parse_and_validate() {
 
 #[test]
 fn components_v1_fixture_parses_and_validates() {
-    let msg: Message = parse_message(COMPONENTS_V1_JSON).expect("v1 fixture parses").message;
+    let msg: Message = parse_message(COMPONENTS_V1_JSON)
+        .expect("v1 fixture parses")
+        .message;
     assert_eq!(msg.components.len(), 2);
     assert_eq!(validate(&msg), Ok(()));
 }
 
 #[test]
 fn components_v2_fixture_parses_and_validates() {
-    let msg: Message = parse_message(COMPONENTS_V2_JSON).expect("v2 fixture parses").message;
+    let msg: Message = parse_message(COMPONENTS_V2_JSON)
+        .expect("v2 fixture parses")
+        .message;
     assert_eq!(msg.flags, Some(1 << 15));
     assert_eq!(msg.components.len(), 6);
     assert!(matches!(
@@ -143,7 +151,9 @@ fn unknown_fields_are_ignored_at_every_nesting_level() {
                           "components": [ { "type": 2, "style": 1,
                                             "future_feature": "ignored" } ] } ]
     }"#;
-    let msg: Message = parse_message(raw).expect("unknown fields tolerated").message;
+    let msg: Message = parse_message(raw)
+        .expect("unknown fields tolerated")
+        .message;
     assert_eq!(validate(&msg), Ok(()));
 }
 
@@ -151,7 +161,9 @@ fn unknown_fields_are_ignored_at_every_nesting_level() {
 fn oversized_title_passes_parsing_but_fails_validation_with_path() {
     let title = "a".repeat(257);
     let raw = format!(r#"{{ "embeds": [ {{ "title": "{title}" }} ] }}"#);
-    let msg: Message = parse_message(&raw).expect("parsing does not enforce limits").message;
+    let msg: Message = parse_message(&raw)
+        .expect("parsing does not enforce limits")
+        .message;
     assert_eq!(
         validate(&msg),
         Err(ValidationError::TooLong {
@@ -194,7 +206,9 @@ const SELECT_KINDS_JSON: &str = r#"{
 
 #[test]
 fn select_kinds_user_role_mentionable_channel_parse_with_their_kind() {
-    let msg: Message = parse_message(SELECT_KINDS_JSON).expect("typed selects parse").message;
+    let msg: Message = parse_message(SELECT_KINDS_JSON)
+        .expect("typed selects parse")
+        .message;
     assert_eq!(msg.components.len(), 4);
     for (index, kind) in [5u8, 6, 7, 8].into_iter().enumerate() {
         let Component::ActionRow { components } = &msg.components[index] else {
@@ -225,7 +239,9 @@ fn select_kinds_user_role_mentionable_channel_parse_with_their_kind() {
 
 #[test]
 fn string_select_keeps_options_and_reports_kind_three() {
-    let msg: Message = parse_message(COMPONENTS_V1_JSON).expect("v1 fixture parses").message;
+    let msg: Message = parse_message(COMPONENTS_V1_JSON)
+        .expect("v1 fixture parses")
+        .message;
     let Component::ActionRow { components } = &msg.components[1] else {
         panic!("second row should be an action row");
     };
@@ -273,7 +289,9 @@ fn premium_button_parses_with_style_six_without_url() {
 
 #[test]
 fn webhook_identity_fields_survive_the_parse_pipeline() {
-    let msg: Message = parse_message(FULL_JSON).expect("full payload parses").message;
+    let msg: Message = parse_message(FULL_JSON)
+        .expect("full payload parses")
+        .message;
     assert_eq!(msg.username.as_deref(), Some("Notifier"));
     assert_eq!(
         msg.avatar_url.as_deref(),
@@ -283,7 +301,9 @@ fn webhook_identity_fields_survive_the_parse_pipeline() {
 
 #[test]
 fn components_v2_flag_bit_survives_parse_pipeline() {
-    let msg: Message = parse_message(COMPONENTS_V2_JSON).expect("v2 fixture parses").message;
+    let msg: Message = parse_message(COMPONENTS_V2_JSON)
+        .expect("v2 fixture parses")
+        .message;
     assert_eq!(
         msg.flags,
         Some(1 << 15),
@@ -352,7 +372,9 @@ fn oversized_text_display_rejects_with_a_message_naming_the_limit() {
     let raw = format!(
         r#"{{ "flags": 32768, "components": [ {{ "type": 10, "content": "{content}" }} ] }}"#
     );
-    let msg: Message = parse_message(&raw).expect("parsing does not enforce limits").message;
+    let msg: Message = parse_message(&raw)
+        .expect("parsing does not enforce limits")
+        .message;
     let error = validate(&msg).expect_err("oversized text display must be rejected");
     assert_eq!(
         error.to_string(),
@@ -376,7 +398,9 @@ fn content_plus_two_text_displays_over_combined_budget_is_rejected() {
             ]
         }}"#
     );
-    let msg: Message = parse_message(&raw).expect("parsing does not enforce combined budget").message;
+    let msg: Message = parse_message(&raw)
+        .expect("parsing does not enforce combined budget")
+        .message;
     assert_eq!(
         validate(&msg),
         Err(ValidationError::CombinedTextTooLong {
@@ -396,7 +420,9 @@ fn eleven_item_gallery_is_rejected_after_parsing() {
         r#"{{ "flags": 32768, "components": [ {{ "type": 12, "items": [{}] }} ] }}"#,
         items.join(",")
     );
-    let msg: Message = parse_message(&raw).expect("parsing does not enforce gallery limits").message;
+    let msg: Message = parse_message(&raw)
+        .expect("parsing does not enforce gallery limits")
+        .message;
     assert_eq!(
         validate(&msg),
         Err(ValidationError::TooManyItems {
@@ -464,7 +490,9 @@ fn single_oversized_section_display_reports_deep_path_before_combined_budget() {
             }}
         ] }}"#
     );
-    let msg: Message = parse_message(&raw).expect("parsing does not enforce limits").message;
+    let msg: Message = parse_message(&raw)
+        .expect("parsing does not enforce limits")
+        .message;
     assert_eq!(
         validate(&msg),
         Err(ValidationError::TooLong {

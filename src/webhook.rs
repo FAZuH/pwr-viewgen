@@ -190,10 +190,7 @@ mod tests {
 
     #[test]
     fn prepare_forwards_canonical_body_verbatim_after_validation() {
-        let parsed = parsed_with(
-            plain_message(),
-            r#"{"content":"hello","custom_id":"kept"}"#,
-        );
+        let parsed = parsed_with(plain_message(), r#"{"content":"hello","custom_id":"kept"}"#);
         let req = prepare("https://discord.com/api/webhooks/1/abc", &parsed, false).unwrap();
         assert_eq!(
             req.body,
@@ -277,8 +274,7 @@ mod tests {
 
     #[test]
     fn success_response_with_id_maps_to_ok_result() {
-        let body =
-            r#"{"id":"1199368822186135553","channel_id":"1","content":"hello"}"#.to_owned();
+        let body = r#"{"id":"1199368822186135553","channel_id":"1","content":"hello"}"#.to_owned();
         assert_eq!(
             map_send_response(200, body),
             Ok(SendResult {

@@ -428,7 +428,9 @@ mod tests {
 
     #[test]
     fn bare_content_object_parses_with_defaults() {
-        let msg = parse_message(r#"{"content": "hello world"}"#).expect("bare payload parses").message;
+        let msg = parse_message(r#"{"content": "hello world"}"#)
+            .expect("bare payload parses")
+            .message;
         assert_eq!(msg.content, "hello world");
         assert_eq!(msg.username, None);
         assert_eq!(msg.avatar_url, None);

@@ -21,7 +21,9 @@ const NOW: i64 = 1_755_878_400;
 const NOW_ARG: &str = "1755878400";
 
 fn render(fixture: &Fixture) -> String {
-    let message = parse_message(&fixture.json).expect("fixture parses").message;
+    let message = parse_message(&fixture.json)
+        .expect("fixture parses")
+        .message;
     render_html_with_width(&message, NOW, DEFAULT_CONTENT_WIDTH)
 }
 
@@ -193,10 +195,12 @@ fn mixed_v1_rows_render_inside_the_components_v2_tree() {
 
 #[test]
 fn unknown_flag_bits_do_not_change_the_rendered_output() {
-    let spliced =
-        parse_message(&fixtures::unknown_flag_bits().json).expect("spliced payload parses").message;
-    let clean =
-        parse_message(&fixtures::unknown_flag_bits_before_splice()).expect("clean payload parses").message;
+    let spliced = parse_message(&fixtures::unknown_flag_bits().json)
+        .expect("spliced payload parses")
+        .message;
+    let clean = parse_message(&fixtures::unknown_flag_bits_before_splice())
+        .expect("clean payload parses")
+        .message;
 
     assert_eq!(
         render_html_with_width(&spliced, NOW, DEFAULT_CONTENT_WIDTH),

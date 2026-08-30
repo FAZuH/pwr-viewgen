@@ -135,11 +135,19 @@ fn write_component(component: &Component, out: &mut String, ctx: &RenderCtx) {
         }
         Component::File { file, spoiler } => {
             let name = file_name(&file.url);
-            write_spoilerable(out, "<div class=\"eg-file-wrap", *spoiler, "</div>", |out| {
-                out.push_str("<a class=\"eg-file-card\" href=\"#\"><span class=\"eg-file-name\">");
-                out.push_str(&esc(&name));
-                out.push_str("</span><span class=\"eg-file-download\"></span></a>");
-            });
+            write_spoilerable(
+                out,
+                "<div class=\"eg-file-wrap",
+                *spoiler,
+                "</div>",
+                |out| {
+                    out.push_str(
+                        "<a class=\"eg-file-card\" href=\"#\"><span class=\"eg-file-name\">",
+                    );
+                    out.push_str(&esc(&name));
+                    out.push_str("</span><span class=\"eg-file-download\"></span></a>");
+                },
+            );
         }
         Component::Separator { divider, spacing } => {
             let size = match spacing.unwrap_or(1) {
@@ -222,14 +230,20 @@ fn push_media_figure(
     class: &str,
     out: &mut String,
 ) {
-    write_spoilerable(out, "<figure class=\"eg-media", spoiler, "</figure>", |out| {
-        let alt = description.unwrap_or("");
-        out.push_str(&format!(
-            "<img class=\"{class}\" src=\"{}\" alt=\"{}\">",
-            esc(&media.url),
-            esc(alt)
-        ));
-    });
+    write_spoilerable(
+        out,
+        "<figure class=\"eg-media",
+        spoiler,
+        "</figure>",
+        |out| {
+            let alt = description.unwrap_or("");
+            out.push_str(&format!(
+                "<img class=\"{class}\" src=\"{}\" alt=\"{}\">",
+                esc(&media.url),
+                esc(alt)
+            ));
+        },
+    );
 }
 
 fn button_class(style: u8) -> &'static str {
