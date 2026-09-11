@@ -13,7 +13,7 @@ png = ["dep:chromiumoxide", "dep:tokio", "dep:futures"]
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-pwr-ext = { path = "../pwr-ext" }
+pwr-ext = { git = "https://github.com/FAZuH/pwr-ext", branch = "main" }
 thiserror = "2"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 clap = { version = "4", features = ["derive"] }
