@@ -2,3 +2,5 @@
 
 # playwright mcp browser artifacts
 .playwright-mcp/
+.scratch/
+.papercuts.jsonl
