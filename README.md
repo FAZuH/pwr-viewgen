@@ -1,94 +1,122 @@
 # pwr-viewgen
 
-A lightweight Discord embed generator in Rust: turn webhook message JSON into
-Discord-looking HTML or PNG previews, and optionally POST it to a real Discord
-webhook.
+**A lightweight Discord embed generator in Rust.**
 
-## Install
+<hr>
 
-Use a pre-built binary at [release page](https://github.com/FAZuH/pwr-viewgen/releases/latest)
+<div align="center">
+● <a href="#installation">Installation</a> ﻿ ● <a href="#usage">Usage</a> ﻿ ● <a href="#docs">Docs</a> ﻿ ● <a href="#license">License</a>
+</div>
 
-Build & install with [cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html):
+## Installation
+
+Download a prebuilt binary from the
+[latest release](https://github.com/FAZuH/pwr-viewgen/releases/latest). Put it
+on your `PATH`. Release binaries include every feature.
+
+Or install with [cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html):
 
 ```bash
 cargo install --git https://github.com/FAZuH/pwr-viewgen
 ```
 
+The default build has the `render` and `send` commands, and PNG export works.
+To get the `serve` command, add the `serve` feature:
+
+```bash
+cargo install --git https://github.com/FAZuH/pwr-viewgen --features serve
+```
+
+PNG export needs Google Chrome or Chromium on your machine. The tool starts
+that browser in headless mode.
 
 ## Usage
 
+`pwr-viewgen` turns webhook message JSON into a Discord-looking HTML page or a
+PNG image. The same JSON can go to a real Discord webhook.
+
 ### Render
 
-Render a message JSON to HTML on stdout:
+Write the HTML to stdout, or read the JSON from stdin:
 
 ```bash
 pwr-viewgen render -i msg.json
 pwr-viewgen render -i - < msg.json
 ```
 
-Write to files instead (`-o` infers format from extension):
+Write files instead. `-o` picks the format from the extension:
 
 ```bash
 pwr-viewgen render -i msg.json --html preview.html
-pwr-viewgen render -i msg.json --png preview.png   # needs headless Chrome
+pwr-viewgen render -i msg.json --png preview.png   # needs Chrome or Chromium
+pwr-viewgen render -i msg.json -o preview.png
 ```
 
-Useful flags: `--width` (content column px), `--scale` (PNG device scale),
-`--now` (Unix timestamp for deterministic output).
+Other flags: `--width` (content column, in px), `--scale` (PNG scale factor),
+and `--now` (Unix timestamp, for repeatable output).
 
 ### Serve (web UI)
+
+Start a local web page for live editing. This needs the `serve` feature:
 
 ```bash
 pwr-viewgen serve            # http://127.0.0.1:8080
 pwr-viewgen serve --port 9000
 ```
 
-Requires the `serve` cargo feature (on by default). A local single page opens
-at `http://127.0.0.1:<port>` (bound to 127.0.0.1 only): edit message JSON in
-the textarea for a debounced live preview, set width/scale, Download PNG,
-Copy HTML, or Send to a Discord webhook URL. Nothing is persisted.
+The server binds to 127.0.0.1 only. On the page you edit the message JSON and
+see a live preview. You can set width and scale, download a PNG, copy the
+HTML, or send the message to a webhook URL. The server stores nothing.
 
 ### Send to a webhook
 
-Validate the payload, then POST it as JSON to a Discord webhook:
+Check the payload, then POST it to a Discord webhook:
 
 ```bash
 pwr-viewgen send -i msg.json --webhook "https://discord.com/api/webhooks/ID/TOKEN"
 ```
 
-Add `--wait` to append `?wait=true`; the created message id is printed on
-success.
+Add `--wait` to append `?wait=true`. The tool then prints the id of the
+created message.
 
-The payload is parsed through the same strict pipeline as `render` (see
-"Accepted inputs" below) before sending: what leaves the machine is the
-canonicalized, normalized JSON — not your raw input bytes. Interactive
-fields survive the trip: button `custom_id`, select-menu kinds (types 5–8),
-and string-select option values are forwarded exactly as canonicalized.
+`send` uses the same parser as `render` (see
+[Accepted inputs](#accepted-inputs)). It sends the canonical JSON, not your
+raw input bytes. Button `custom_id` values, select-menu kinds (types 5–8), and
+string-select option values pass through unchanged.
 
-Live send is a manual step — no test talks to the network; CI runs only
-offline unit/integration tests. To verify against Discord by hand, create a
-webhook in a server channel (Channel settings → Integrations → Webhooks) and
-run the `send` command above.
+Live sends are a manual step. No test talks to the network; CI runs offline
+tests only. To check against Discord, create a webhook in a channel
+(Channel settings → Integrations → Webhooks), then run the command above.
 
-Errors: oversized/invalid payloads are rejected before any request
-(`message failed validation: …`). Non-2xx responses print Discord's error
-JSON and exit non-zero. Send makes a single request; there is no automatic
-retry.
+Bad payloads fail before the tool sends a request
+(`message failed validation: …`). A non-2xx response prints the Discord error
+JSON, and the tool exits with a non-zero status. The command makes one
+request. It does not retry.
 
 ### Accepted inputs
 
-Input JSON is parsed through the `pwr-ext` wrappers (mirrors of the
-serenity-next builders), so payloads must match what serenity builders emit:
-unknown component types, select menus outside action rows, and string-select
-options without a `value` are rejected at parse time. Within that shape, more
-is accepted than before: components v2 trees, select-menu kinds
-user/role/mentionable/channel (types 5–8, rendered as closed pills), and
-premium buttons (style 6, rendered like link buttons without a URL).
-Canonicalization is lossless for rendering; webhook identity fields
-(`username`, `avatar_url`) are preserved.
+The parser uses the `pwr-ext` wrappers. These mirror the serenity-next
+builders, so your JSON must match what those builders emit. The parser
+rejects unknown component types, select menus outside an action row, and
+string-select options with no `value`.
 
-Note: premium buttons render but `pwr-viewgen send` still rejects them.
-That is deliberate — premium (SKU) buttons are application-owned, and a
-plain webhook cannot create them; Discord would reject the request. The
-renderer keeps them visible so previews of bot-produced payloads stay
-faithful.
+Within that shape, the tool accepts: components v2 trees, select-menu kinds
+user/role/mentionable/channel (types 5–8, rendered as closed pills), and
+premium buttons (style 6, rendered like a link button with no URL).
+
+Canonicalization keeps all render data. The webhook identity fields
+(`username`, `avatar_url`) are kept too.
+
+Note: `send` rejects premium buttons. This is deliberate. A premium (SKU)
+button belongs to an application, and a plain webhook cannot create one, so
+Discord would reject the request. The renderer still shows them, so previews
+of bot-made payloads stay faithful.
+
+## Docs
+
+- [Commit and Changelog Conventions](docs/dev/commit-changelog.md) — commit format and how the changelog is generated
+- [Commit Scopes](docs/dev/commit-scopes.md) — the approved `type(scope)` list for this repository
+
+## License
+
+`pwr-viewgen` is distributed under the [MIT](https://spdx.org/licenses/MIT.html) license.
