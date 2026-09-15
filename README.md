@@ -1,6 +1,10 @@
+<div align="center">
+
 # pwr-viewgen
 
 **A lightweight Discord embed generator in Rust.**
+
+</div>
 
 <hr>
 
