@@ -1411,7 +1411,7 @@ dependencies = [
 [[package]]
 name = "pwr-ext"
 version = "0.1.0"
-source = "git+https://github.com/FAZuH/pwr-ext?branch=main#1fdaa8e8a3b4ff7dfb668aadbe2802d99f3a0f6c"
+source = "git+https://github.com/FAZuH/pwr-ext?tag=v0.1.0#54310c1adc16e2ed3a3aa73ea3a70159e174b5af"
 dependencies = [
  "serde",
  "serde_json",
