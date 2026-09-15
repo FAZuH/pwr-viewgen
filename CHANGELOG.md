@@ -1,4 +1,11 @@
-## 0.1.0 (2026-09-11)
+## [0.1.1](https://github.com/FAZuH/pwr-viewgen/compare/v0.1.0...v0.1.1) (2026-09-15)
+
+
+### Bug Fixes
+
+* **deps:** pin pwr-ext to the published v0.1.0 tag ([df5efb6](https://github.com/FAZuH/pwr-viewgen/commit/df5efb6990597be71ad82d586c9b5abc34ce7f8b))
+
+## [0.1.0](https://github.com/FAZuH/pwr-viewgen/compare/818caf6155e0b16bb3677e3a75fb8a5a5f40d3ab...v0.1.0) (2026-09-11)
 
 
 ### ⚠ BREAKING CHANGES

@@ -1,6 +1,6 @@
 [package]
 name = "pwr-viewgen"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Lightweight Discord embed generator: webhook message JSON to HTML/PNG preview"
 
