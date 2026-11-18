@@ -9,7 +9,7 @@ The Discord webhook-message JSON a user feeds in — the thing being previewed.
 _Avoid_: input JSON, request body
 
 **Parse**:
-The strict front door: a payload either matches what serenity-next builders emit or it is rejected before anything else happens. Parsing runs through the `pwr-ext` wrappers.
+The strict front door: a payload either matches what serenity-next builders emit or it is rejected before anything else happens. Parsing runs through the `poise ext` wrappers.
 _Avoid_: load, deserialize (when speaking about the pipeline stage)
 
 **Canonical body**:

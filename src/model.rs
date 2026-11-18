@@ -1,4 +1,4 @@
-use pwr_ext::prelude::CreateMessageDe;
+use poise::ext::prelude::CreateMessageDe;
 use serde::Deserialize;
 
 /// A message-parsing failure, either from malformed JSON or from payload
@@ -17,7 +17,7 @@ impl std::error::Error for ParseError {}
 /// Parses webhook-execution JSON into a [`ParsedMessage`] — the render-side
 /// [`Message`] view together with the canonical body it was loaded from.
 ///
-/// Pipeline per spec D1: `str -> Value -> pwr-ext wrappers (strict,
+/// Pipeline per spec D1: `str -> Value -> poise ext wrappers (strict,
 /// upstream-canonical) -> serde_json::to_value -> Message::from_value`.
 /// Unknown component types, invalid select-menu kinds, and other
 /// non-builder-shaped payloads error here before any rendering happens.

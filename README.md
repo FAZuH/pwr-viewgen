@@ -99,7 +99,7 @@ request. It does not retry.
 
 ### Accepted inputs
 
-The parser uses the `pwr-ext` wrappers. These mirror the serenity-next
+The parser uses the `poise ext` wrappers. These mirror the serenity-next
 builders, so your JSON must match what those builders emit. The parser
 rejects unknown component types, select menus outside an action row, and
 string-select options with no `value`.
